@@ -4,12 +4,13 @@ import { View, div } from "gpui-kit";
 import { v_flex, h_flex, InputState, Input, Scrollbar } from "gpui-base";
 import { exec, readTextFile, writeTextFile, watchFolder, theme, settings, appHome, nextCommand } from "herdr";
 import { location, locationKey, git, READ, sendToChat, focusChat, diffRows, diffRow, button, untab } from "./common.js";
+import { layoutGraph } from "./graph.js";
 
 const MAX_FILES = 1000, MAX_LINES = 3000, NET = 120000;
 const CONFLICTS = "Conflicts: fix each U file (Ours / Theirs, or edit it and Mark resolved), then Commit. Abort merge undoes it.";
 
 // The file header and hunk n of a one-file diff, byte for byte (CRLF kept); "" if none.
-export function oneHunk(diff, n) {
+function oneHunk(diff, n) {
   let head = "", hunk = "", i = -1;
   for (const l of diff.split(/(?<=\n)/)) {
     if (l.startsWith("@@")) i++;
@@ -18,13 +19,41 @@ export function oneHunk(diff, n) {
   return hunk ? head + hunk : "";
 }
 
-// git log --graph lines → rows; the graph is redrawn with box lines.
-const GRAPH = { "*": "●", "|": "│", "/": "╱", "\\": "╲", "_": "─" };
+// git log (LOG_FORMAT) → commits with their refs and graph lanes.
+const LOG_FORMAT = "--format=%H%x01%P%x01%h%x01%D%x01%s%x01%an%x01%ar";
 function parseLog(out) {
-  return out.split("\n").filter(Boolean).map((l) => {
-    const [graph, hash, refs, subject, author, when] = l.split("\x01");
-    return { graph: graph.replace(/[*|/\\_]/g, (c) => GRAPH[c]), hash, refs: refs?.trim(), subject, author, when };
+  const commits = out.split(/\r?\n/).filter(Boolean).map((l) => {
+    const [hash, parents, short, decor, subject, author, when] = l.split("\x01");
+    const refs = { head: false, local: [], remote: [], tags: [] };
+    for (const d of (decor ?? "").split(", ").filter(Boolean)) {
+      const name = d.replace(/^HEAD -> /, "");
+      if (name !== d || d === "HEAD") refs.head = true;
+      if (name.startsWith("refs/heads/")) refs.local.push(name.slice(11));
+      else if (name.startsWith("refs/remotes/") && !name.endsWith("/HEAD")) refs.remote.push(name.slice(13));
+      else if (name.startsWith("tag: refs/tags/")) refs.tags.push(name.slice(15));
+    }
+    return { hash, parents: parents ? parents.split(" ") : [], short, refs, subject, author, when };
   });
+  const lanes = layoutGraph(commits);
+  return commits.map((c, i) => ({ ...c, ...lanes[i] }));
+}
+
+// Graph drawing: lane width, row height, left padding (px).
+const LANE = 14, ROW = 28, PAD = 8, HALF = ROW / 2;
+const laneX = (k) => PAD + k * LANE + LANE / 2;
+
+// One half-row line: straight down, or a rounded bend between two lanes.
+function graphLine([from, to, color], half, paint) {
+  const x1 = laneX(from), x2 = laneX(to), c = paint(color);
+  if (from === to) return div().absolute().left(x1 - 1).top(half === "top" ? 0 : HALF).w(2).h(HALF).bg(c);
+  const r = Math.min(8, Math.abs(x2 - x1), HALF);
+  if (half === "top") { // from lane `from` at the top, bending into `to` at the middle
+    return (x1 < x2 ? div().absolute().left(x1 - 1).w(x2 - x1 + 1).border_l(2).rounded_bl(r) : div().absolute().left(x2).w(x1 - x2 + 1).border_r(2).rounded_br(r))
+      .top(0).h(HALF + 1).border_b(2).border_color(c);
+  }
+  // from the middle at `from`, bending down into lane `to`
+  return (x2 > x1 ? div().absolute().left(x1).w(x2 - x1 + 1).border_r(2).rounded_tr(r) : div().absolute().left(x2 - 1).w(x1 - x2 + 1).border_l(2).rounded_tl(r))
+    .top(HALF - 1).h(HALF + 1).border_t(2).border_color(c);
 }
 
 export default class Changes extends View {
@@ -62,11 +91,12 @@ export default class Changes extends View {
       fetch: () => this.fetch(cx), pull: () => this.pull(cx), push: () => this.push(cx),
       stash: () => this.stash(cx), pop: () => this.pop(cx), abort: () => this.abortMerge(cx),
       branches: () => this.openBranches(cx),
-      checkout: () => this.checkout(arg, arg.includes("/") && !this.menu?.local.includes(arg), cx),
+      checkout: () => this.checkout(arg, undefined, cx),
       merge: () => this.merge(arg, cx),
       "new-branch": () => { this.branchName.set_value(arg); this.newBranch(cx); },
       history: () => this.openLog(cx),
       show: () => this.showCommit(arg, cx),
+      pick: () => { this.picked = this.log?.find((r) => r.hash.startsWith(arg))?.hash ?? null; },
     }[name];
     run?.();
   }
@@ -193,7 +223,7 @@ export default class Changes extends View {
         }
         this.note = { text, error: true };
       }
-      finally { this.busy = null; done?.(); this.refresh(cx); cx.notify(); }
+      finally { this.busy = null; done?.(); this.refresh(cx); if (this.view === "log") this.loadLog(cx); cx.notify(); }
     });
     cx.notify();
   }
@@ -285,9 +315,18 @@ export default class Changes extends View {
     cx.notify();
   }
 
+  // isRemote undefined (a command): a local branch of that name wins, else it's a remote one.
   checkout(branch, isRemote, cx) {
     this.menu = null;
-    this.act("Checkout", async () => { await this.git(isRemote ? ["switch", "--track", branch] : ["switch", branch]); return `On ${branch}`; }, cx);
+    const hasLocal = async (name) => (await exec("git", ["show-ref", "--verify", "-q", `refs/heads/${name}`], { cwd: this.root, on: this.on })).code === 0;
+    this.act("Checkout", async () => {
+      isRemote ??= !(await hasLocal(branch));
+      // origin/x with a local x already (usually behind it): switch to x, then Pull.
+      const local = branch.replace(/^[^/]+\//, "");
+      if (isRemote && await hasLocal(local)) { await this.git(["switch", local]); return `On ${local}: Pull to bring in ${branch}`; }
+      await this.git(isRemote ? ["switch", "--track", branch] : ["switch", branch]);
+      return `On ${branch}`;
+    }, cx);
   }
 
   merge(branch, cx) {
@@ -306,13 +345,35 @@ export default class Changes extends View {
 
   openLog(cx) {
     if (this.view !== "changes") { this.view = "changes"; cx.notify(); return; }
-    this.view = "log"; this.log = null;
+    if (!this.root) return;
+    this.view = "log"; this.log = null; this.picked = null;
+    this.loadLog(cx);
+  }
+
+  loadLog(cx) {
     cx.spawn(async (cx) => {
-      try { this.log = parseLog(await this.git([...READ, "log", "--graph", "--all", "--date-order", "-n", "500", "--format=%x01%h%x01%d%x01%s%x01%an%x01%ar"])); }
+      try { this.log = parseLog(await this.git([...READ, "log", "--all", "--date-order", "--decorate=full", "-n", "500", LOG_FORMAT])); }
       catch (e) { this.log = []; this.note = { text: String(e.message ?? e), error: true }; }
       cx.notify();
     });
     cx.notify();
+  }
+
+  // What the picked commit offers: its branches to check out or merge, else the commit itself.
+  logActions(c, t) {
+    const out = [button("log-view", "View changes", t, (_e, cx) => this.showCommit(c.hash, cx))];
+    const branches = [...c.refs.local.map((b) => [b, false]), ...c.refs.remote.filter((r) => !c.refs.local.includes(r.replace(/^[^/]+\//, ""))).map((b) => [b, true])];
+    for (const [b, remote] of branches) {
+      if (b === this.branch) continue;
+      out.push(button(`log-co-${b}`, `Checkout ${b}`, t, (_e, cx) => this.checkout(b, remote, cx)));
+      out.push(button(`log-merge-${b}`, `Merge ${b} into ${this.branch}`, t, (_e, cx) => this.merge(b, cx)));
+    }
+    if (!branches.length && !c.refs.head) {
+      out.push(button("log-co-commit", "Checkout commit", t, (_e, cx) => this.act("Checkout", async () => { await this.git(["switch", "--detach", c.hash]); return `On ${c.short} (no branch)`; }, cx)));
+      out.push(button("log-merge-commit", `Merge into ${this.branch}`, t, (_e, cx) => this.merge(c.hash, cx)));
+    }
+    out.push(button("log-copy", "Copy hash", t, (_e, cx) => { cx.write_to_clipboard(c.hash); this.note = { text: `Copied ${c.short}` }; cx.notify(); }));
+    return out;
   }
 
   showCommit(hash, cx) {
@@ -431,15 +492,33 @@ export default class Changes extends View {
   }
 
   logView(t) {
-    if (!this.log) return div().p(12).text_color(t.dim).child("Loading history…");
-    return v_flex().id("log").flex_1().min_h(0).overflow_y_scrollbar().text_size(12).children(this.log.map((r, j) =>
-        h_flex().id(`log-${j}`).w_full().h(22).flex_none().px(8).gap(6).items_center()
-          .when(Boolean(r.hash), (e) => e.cursor_pointer().hover((s) => s.bg(t.hover)).on_click((_e, cx) => this.showCommit(r.hash, cx)))
-          .child(div().flex_none().font_family(settings().font_family ?? "JetBrains Mono").text_color(t.accent).child(r.graph))
-          .when(Boolean(r.hash), (e) => e.child(div().flex_none().text_color(t.dim).font_family(settings().font_family ?? "JetBrains Mono").child(r.hash))
-            .when(Boolean(r.refs), (e) => e.child(div().flex_none().px(4).rounded(4).bg(t.selected).text_size(11).text_color(t.ansi3).child(r.refs.replace(/^\(|\)$/g, ""))))
-            .child(div().flex_1().min_w(0).truncate().child(r.subject))
-            .child(div().flex_none().text_size(11).text_color(t.dim).child(`${r.author}, ${r.when}`)))));
+    if (!this.log) return [div().p(12).text_color(t.dim).child("Loading history…")];
+    const palette = [t.ansi4, t.ansi2, t.ansi5, t.ansi3, t.ansi6, t.ansi1, t.ansi12, t.ansi10], paint = (n) => palette[n % palette.length];
+    const width = PAD * 2 + LANE * Math.min(12, Math.max(1, ...this.log.map((r) => r.width)));
+    const picked = this.log.find((r) => r.hash === this.picked);
+    const pill = (id, text, fg, bg, border) => div().id(id).flex_none().h(18).px(6).flex().items_center().rounded(9).text_size(11)
+      .text_color(fg).bg(bg).when(Boolean(border), (e) => e.border_1().border_color(border)).child(text);
+    const row = (r) => {
+      const c = paint(r.color), x = laneX(r.col), merge = r.parents.length > 1;
+      return h_flex().id(`log-${r.hash}`).w_full().h(ROW).flex_none().pr(10).gap(6).items_center().cursor_pointer()
+        .when(this.picked === r.hash, (e) => e.bg(t.selected)).hover((s) => s.bg(t.hover))
+        .on_click((e, cx) => { if (e.click_count > 1) this.showCommit(r.hash, cx); else { this.picked = r.hash; cx.notify(); } })
+        .child(div().relative().flex_none().w(width).h(ROW).overflow_hidden()
+          .children(r.top.map((l) => graphLine(l, "top", paint)))
+          .children(r.bottom.map((l) => graphLine(l, "bottom", paint)))
+          .child(div().absolute().left(x - 5).top(HALF - 5).w(10).h(10).rounded(5).border_2().border_color(r.refs.head ? t.foreground : c).bg(merge ? t.background : c)))
+        .children(r.refs.local.map((b) => pill(`ref-${r.hash}-${b}`, b, b === this.branch ? t.background : c, b === this.branch ? c : c + "26")))
+        .children(r.refs.remote.map((b) => pill(`ref-${r.hash}-${b}`, b, c, c + "14", c + "80")))
+        .children(r.refs.tags.map((b) => pill(`tag-${r.hash}-${b}`, b, t.ansi3, t.ansi3 + "1f")))
+        .child(div().flex_1().min_w(0).truncate().text_color(merge ? t.muted : t.foreground).child(r.subject))
+        .child(div().flex_none().text_size(11).text_color(t.dim).child(`${r.author} · ${r.when}`));
+    };
+    return [
+      h_flex().flex_none().px(10).py(6).gap(5).items_center().flex_wrap().border_b(1).border_color(t.border).text_size(12)
+        .children(picked ? [div().text_color(t.dim).font_family(settings().font_family ?? "JetBrains Mono").child(picked.short), ...this.logActions(picked, t)]
+          : [div().text_color(t.dim).child("Click a commit for its actions · double-click to see its changes")]),
+      v_flex().id("log").flex_1().min_h(0).overflow_y_scrollbar().text_size(12).children(this.log.map(row)),
+    ];
   }
 
   render(cx) {

@@ -4,6 +4,7 @@ import { View, div, svg } from "gpui-kit";
 import { v_flex, h_flex, Editor, EditorState, InputState, Input } from "gpui-base";
 import { exec, readTextFile, writeTextFile, watchFolder, theme, settings, window, nextCommand } from "herdr";
 import { location, locationKey, git, READ, sendToChat, focusChat, diffRows, diffRow, button, untab } from "./common.js";
+import { usesTabs, tabsToSpaces, spacesToTabs, replaceOnLines } from "./text.js";
 
 const LANG = { ts: "js", tsx: "js", mts: "js", cts: "js", jsx: "js", mjs: "js", toml: "yaml", jsonc: "json", svelte: "html", vue: "html" };
 const PER_FOLDER = 500, TOTAL = 5000, MAX_EDIT = 400000;
@@ -54,6 +55,10 @@ export default class Files extends View {
     this.search.on("submit", (_e, cx) => this.runSearch(cx));
     this.search.on("focus", (_e, cx) => { this.typing = "search"; cx.notify(); });
     this.search.on("blur", (_e, cx) => { this.typing = null; cx.notify(); });
+    this.replaceWith = InputState.new({ placeholder: "Replace with" });
+    this.replaceWith.on("submit", (_e, cx) => this.results?.rows.length && this.replaceHits(this.results.rows, cx));
+    this.replaceWith.on("focus", (_e, cx) => { this.typing = "replace"; cx.notify(); });
+    this.replaceWith.on("blur", (_e, cx) => { this.typing = null; cx.notify(); });
     this.find = InputState.new({ placeholder: "Find in file" });
     this.find.on("submit", (_e, cx) => this.findNext(cx));
     this.find.on("focus", (_e, cx) => { this.typing = "find"; cx.notify(); });
@@ -69,12 +74,13 @@ export default class Files extends View {
     const i = c.indexOf(":"), name = i < 0 ? c : c.slice(0, i), arg = i < 0 ? "" : c.slice(i + 1);
     const run = {
       focus: () => this.handle.focus(),
-      open: () => { const m = /^(.*?)(?::(\d+))?$/.exec(arg); this.open(m[1], Number(m[2]) || 0, cx); },
+      open: () => { const m = /^(.*?)(?::(\d+))?$/.exec(arg); this.open(m[1], m[2] ? { line: +m[2] } : null, cx); },
       close: () => this.close(),
       save: () => this.save(cx),
       type: () => this.code && !this.readonly && this.code.replace(arg),
       find: () => { this.find.set_value(arg); this.findNext(cx); },
       search: () => { this.search.set_value(arg); this.runSearch(cx); },
+      "replace-all": () => { this.replaceWith.set_value(arg); if (this.results?.rows.length) this.replaceHits(this.results.rows, cx); },
       blame: () => this.file && this.showBlame(cx),
       history: () => this.file && this.showHistory(cx),
       send: () => (arg || this.file) && this.send(arg || this.file, cx),
@@ -114,7 +120,7 @@ export default class Files extends View {
       this.context = { key: next, cwd, on }; this.root = cwd; this.on = on; this.entries = new Map(); this.folders = new Set(saved?.folders);
       this.pending = new Set(); this.marks = {}; this.close(); this.watched = null; this.error = null; this.limited = false;
       this.loading = false; this.results = null; this.isRepo = false;
-      if (saved?.file) this.open(saved.file, 0, cx);
+      if (saved?.file) this.open(saved.file, null, cx);
     }
     if (!cwd || this.loading) return;
     const context = this.context;
@@ -173,10 +179,13 @@ export default class Files extends View {
     this.rows = null; this.note = null; this.confirmClose = false;
   }
 
-  open(path, line, cx) {
+  full(path) { return `${this.root}/${path}`; }
+
+  // pos: { line } (1-based); { line, word } also selects that word on the line.
+  open(path, pos, cx) {
     this.close(); this.file = path;
     if (!cx) return;
-    const context = this.context, full = `${this.root}/${path}`, on = this.on;
+    const context = this.context, full = this.full(path), on = this.on;
     cx.spawn(async cx => {
       try {
         const text = await readTextFile(full, { on });
@@ -187,33 +196,39 @@ export default class Files extends View {
         // Big files and other machines' files open read-only (writeTextFile is local only).
         this.readonly = text.length > MAX_EDIT || Boolean(on);
         this.disk = text; this.crlf = text.includes("\r\n");
-        this.shown = text.length > MAX_EDIT ? text.slice(0, MAX_EDIT) + "\n… (file truncated, read-only)" : text.replace(/\r\n/g, "\n");
+        const plain = text.replace(/\r\n/g, "\n");
+        this.tabs = text.length <= MAX_EDIT && usesTabs(plain);
+        this.shown = text.length > MAX_EDIT ? text.slice(0, MAX_EDIT) + "\n… (file truncated, read-only)"
+          : this.tabs ? tabsToSpaces(plain) : plain;
         this.code = EditorState.new({ language: LANG[ext] ?? ext, readonly: this.readonly, value: this.shown,
           font_family: settings().font_family, font_size: 13,
           syntax: { keyword: t.ansi5, string: t.ansi2, comment: t.dim, function: t.ansi4, type: t.ansi3, number: t.ansi1, constant: t.ansi6 } });
         this.shown = this.code.value(); // as the editor holds it, so "changed" compares like with like
         this.code.on("change", (_e, cx) => { const d = this.dirty(); if (d !== this.wasDirty) { this.wasDirty = d; cx.notify(); } });
         this.wasDirty = false;
-        if (line > 0) this.goToLine(line);
+        if (pos) this.goTo(pos);
       } catch (e) { if (this.file === path && this.current(context)) this.fileError = `Cannot open this file: ${e}`; }
       finally { cx.notify(); }
     });
   }
 
-  // Puts the cursor at the start of line n (1-based).
-  goToLine(n) {
+  // Puts the cursor at the start of { line }, selecting { word } on it.
+  goTo({ line, word }) {
     const text = this.code.value();
-    let at = 0;
-    for (let i = 1; i < n && at >= 0; i++) at = text.indexOf("\n", at) + 1 || -1;
-    if (at < 0) return;
-    this.code.set_selected_range({ start: at, end: at });
+    let start = 0;
+    for (let i = 1; i < line && start >= 0; i++) start = text.indexOf("\n", start) + 1 || -1;
+    if (start < 0) return;
+    const eol = text.indexOf("\n", start), w = word ? text.indexOf(word, start) : -1;
+    const hit = w >= 0 && (eol < 0 || w < eol);
+    this.code.set_selected_range({ start: hit ? w : start, end: hit ? w + word.length : start });
     this.code.focus();
   }
 
   save(cx) {
     if (!this.dirty()) return;
-    const full = `${this.root}/${this.file}`, path = this.file;
+    const full = this.full(this.file), path = this.file;
     let text = this.code.value();
+    if (this.tabs) text = spacesToTabs(text);
     if (this.crlf) text = text.replace(/\r?\n/g, "\r\n");
     cx.spawn(async cx => {
       try {
@@ -267,6 +282,37 @@ export default class Files extends View {
   }
 
   // --- search all files --------------------------------------------------------
+
+  // Replaces the search text (any case, as the search matched it) on the hit lines
+  // only, file by file; a file changed since the search is skipped, not overwritten.
+  replaceHits(hits, cx) {
+    const q = this.results?.q, to = this.replaceWith.value();
+    if (!q || this.replacing) return;
+    const byFile = new Map();
+    for (const h of hits) byFile.set(h.path, [...(byFile.get(h.path) ?? []), h.line]);
+    this.replacing = true; this.note = null;
+    cx.spawn(async (cx) => {
+      let count = 0, files = 0;
+      const skipped = [];
+      try {
+        for (const [path, lines] of byFile) {
+          try {
+            const full = this.full(path), text = await readTextFile(full);
+            if (text === null) { skipped.push(`${path} (gone)`); continue; }
+            // readTextFile stops at 1 MiB: never write back a file that may be cut short.
+            if (text.length > MAX_EDIT) { skipped.push(`${path} (too big)`); continue; }
+            const { text: next, n } = replaceOnLines(text, lines, q, to);
+            if (!n) continue;
+            await writeTextFile(full, next, text);
+            count += n; files++;
+          } catch (e) { skipped.push(`${path} (${e.message ?? e})`); }
+        }
+        this.note = `Replaced ${count} in ${files} file${files === 1 ? "" : "s"}${skipped.length ? ` · skipped ${skipped.join(", ")}` : ""}${this.results?.more ? " · only the first 500 matches: search again for more" : ""}`;
+      } catch (e) { this.note = `Replace failed: ${e.message ?? e}`; }
+      finally { this.replacing = false; this.runSearch(cx); this.refresh(cx); cx.notify(); }
+    });
+    cx.notify();
+  }
 
   runSearch(cx) {
     const q = this.search.value().trim();
@@ -328,7 +374,7 @@ export default class Files extends View {
       const path = prefix ? `${prefix}/${entry.name}` : entry.name, open = this.folders.has(path), mark = this.mark(path);
       out.push(h_flex().id(`file-${path}`).h(26).flex_none().pl(8 + depth * 16).pr(8).gap(7).items_center().rounded(6).cursor_pointer().hover(s => s.bg(t.hover))
         .drag_paths([`${this.root}/${path}`], { on: this.on })
-        .on_click((_e, cx) => entry.dir ? this.toggle(path, cx) : this.open(path, 0, cx))
+        .on_click((_e, cx) => { if (entry.dir) this.toggle(path, cx); else this.open(path, null, cx); })
         .on_mouse_down("right", (_e, cx) => { cx.stop_propagation(); this.send(path, cx); })
         .child(entry.dir ? svg(`mods/files/chevron-${open ? "down" : "right"}.svg`).size(12).flex_none().text_color(t.dim) : div().w(12).flex_none())
         .child(svg(`mods/files/${entry.dir ? "folder" : "file"}.svg`).size(14).flex_none().text_color(t.muted))
@@ -404,21 +450,27 @@ export default class Files extends View {
         .child(div().flex_1().child(this.results.loading ? "Searching…" : this.results.error ?? `${this.results.rows.length}${this.results.more ? "+" : ""} matches for “${this.results.q}”`))
         .child(button("files-results-close", "×", t, (_e, cx) => { this.results = null; this.search.set_value(""); cx.notify(); })))
       .children(this.results.rows.map((r, i) => v_flex().id(`hit-${i}`).flex_none().px(8).py(3).rounded(6).cursor_pointer().hover(s => s.bg(t.hover))
-        .on_click((_e, cx) => this.open(r.path, r.line, cx))
-        .child(div().text_size(11).text_color(t.muted).truncate().child(`${r.path}:${r.line}`))
+        .on_click((_e, cx) => this.open(r.path, { line: r.line, word: this.results.q }, cx))
+        .child(h_flex().gap(6).items_center().child(div().flex_1().min_w(0).text_size(11).text_color(t.muted).truncate().child(`${r.path}:${r.line}`))
+          .child(button(`hit-replace-${i}`, "Replace", t, (_e, cx) => this.replaceHits([r], cx), { enabled: !this.replacing })))
         .child(div().text_size(12).truncate().font_family(settings().font_family ?? "JetBrains Mono").child(r.text))));
+    const replaceBar = this.results && !this.results.loading && this.results.rows.length > 0 && h_flex().flex_none().px(10).pb(6).gap(6).items_center().border_b(1).border_color(t.border)
+      .child(this.input("files-replace", this.replaceWith, this.typing === "replace", t))
+      .child(button("files-replace-all", this.replacing ? "Replacing…" : `Replace all (${new Set(this.results.rows.map((r) => r.path)).size} files)`, t,
+        (_e, cx) => this.replaceHits(this.results.rows, cx), { primary: true, enabled: !this.replacing }));
     const tree = v_flex().id("files-tree").flex_1().min_h(0).overflow_y_scrollbar().p(6).children(this.treeRows("", 0, [], t))
       .when(Boolean(this.error) || !this.entries.get("")?.length, el => el.child(div().p(8).text_size(12).text_color(t.dim).child(this.error || (this.loading ? "Loading files…" : this.root ? "No files" : "No folder"))))
       .when(this.limited, el => el.child(div().p(8).text_size(11).text_color(t.dim).child("File list limited to 500 entries per folder and 5,000 total")));
     return v_flex().id("my-files").size_full().min_h(0).rounded(10).overflow_hidden().bg(t.background).border_1().border_color(t.border).text_color(t.foreground).text_size(13)
       .track_focus(this.handle).on_key_down((e, cx) => this.key(e, cx))
       .child(header)
-      .when(!file, el => el.child(h_flex().flex_none().px(10).py(6).border_b(1).border_color(t.border).child(this.input("files-search", this.search, this.typing === "search", t))))
+      .when(!file, el => el.child(h_flex().flex_none().px(10).py(6).when(!replaceBar, e => e.border_b(1).border_color(t.border)).child(this.input("files-search", this.search, this.typing === "search", t))))
+      .when(!file && Boolean(replaceBar), el => el.child(replaceBar))
       .when(Boolean(fileBar), el => el.child(fileBar))
       .when(Boolean(confirm), el => el.child(confirm))
-      .when(Boolean(this.note), el => el.child(div().px(12).py(4).text_size(11).text_color(this.note === "Saved" ? t.ansi2 : t.ansi1).child(this.note)))
+      .when(Boolean(this.note), el => el.child(div().px(12).py(4).text_size(11).text_color(this.note === "Saved" || this.note.startsWith("Replaced") ? t.ansi2 : this.note.endsWith("…") ? t.dim : t.ansi1).child(this.note)))
       .child(file ? this.fileBody(t) : results || tree)
       .child(div().flex_none().px(12).py(4).border_t(1).border_color(t.border).text_size(11).text_color(t.dim).truncate()
-        .child(file ? "ctrl+s save · ctrl+f find · esc back" : "click: open · right-click or drag: @path to chat · / search · esc: chat"));
+        .child(file ? "ctrl+s save · ctrl+f find · esc chat" : "click: open · right-click or drag: @path to chat · / search · esc: chat"));
   }
 }

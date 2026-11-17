@@ -40,8 +40,13 @@ copied files at once). `uninstall.ps1` removes everything and goes back to `main
   goes to the chat.
   Files keep their line endings (CRLF stays CRLF). Files over 400 KB and files on
   other machines open read-only.
+- Tab-indented files (Go) show their tabs as 4 spaces (the editor draws a tab as
+  nothing) and are saved with tabs again.
 - **Search all files** (`/`): every text file, tracked or not; click a hit to open
   the file at that line.
+- **Replace**: after a search, type the new text under it and **Replace all**, or
+  **Replace** on one hit. It replaces the search text (any case) on the matched
+  lines only, and skips a file that changed since the search.
 - **Blame**: who changed each line; click a line to see that commit's change.
 - **History**: the file's commits; click one to see its change.
 - **@ chat** or right-click a file: types `@path ` into the chat (the agent in
@@ -65,7 +70,12 @@ copied files at once). `uninstall.ps1` removes everything and goes back to `main
 - Conflicts: the file shows `!` and its text with the conflict markers. Take
   **Ours** or **Theirs**, or edit it in Files and click **Mark resolved**; then
   Commit. **Abort merge** undoes the merge.
-- **History**: the graph of all branches; click a commit to see its change.
+- **History**: the graph of all branches, drawn like Fork: one color per line,
+  curves where branches split and merge, branch labels (the current branch filled,
+  remote branches outlined in the line's color, tags in yellow), a hollow dot for merge commits. Click
+  a commit for its actions: **View changes**, **Checkout** or **Merge into
+  current** for each branch on it (a commit with no branch: check it out without a
+  branch, or merge it), **Copy hash**. Double-click opens its changes.
 
 Keys when the panel has focus: `↑` `↓` select, `space` stage, `c` commit message,
 `l` history, `s` send `@path`, `esc` back (or to the chat).
@@ -75,12 +85,12 @@ Keys when the panel has focus: `↑` `↓` select, `space` stage, `c` commit mes
 Both panels take commands, so you can bind keys in `~/.config/herdr-app/keys.json`
 or script them: `herdr-app do my-changes.pull`.
 
-- `my-files.<cmd>`: `open:<path>[:<line>]`, `save`, `close`, `find:<text>`,
-  `search:<text>`, `blame`, `history`, `send[:<path>]`, `type:<text>`
+- `my-files.<cmd>`: `open:<path>[:<line>]`, `save`, `close`, `find:<text>`, `search:<text>`, `replace-all:<text>`, `blame`,
+  `history`, `send[:<path>]`, `type:<text>`
 - `my-changes.<cmd>`: `select:<path>`, `stage`, `stage-all`, `unstage-all`,
   `hunk:<n>`, `discard`, `ours`, `theirs`, `commit[:<message>]`, `fetch`, `pull`,
   `push`, `stash`, `pop`, `abort`, `branches`, `checkout:<branch>`,
-  `merge:<branch>`, `new-branch:<name>`, `history`, `show:<hash>`
+  `merge:<branch>`, `new-branch:<name>`, `history`, `pick:<hash>`, `show:<hash>`
 
 Example `keys.json` section:
 
@@ -102,6 +112,8 @@ Example `keys.json` section:
 | --- | --- |
 | `mods/my-files/main.js` | Files: tree, editor, search, blame, history, send |
 | `mods/my-changes/main.js` | Changes: status, diff, stage, commit, branches, history |
+| `mods/my-files/text.js` | tab ↔ space indents and replace-on-lines (test: `node mods/my-files/text.test.mjs`) |
+| `mods/my-changes/graph.js` | history graph lanes (test: `node mods/my-changes/graph.test.mjs`) |
 | `mods/*/common.js` | shared helpers (same file in both mods: a mod can't import another's) |
 | `layouts/my-herdr.json` | herdr's `main` layout with Files left and Changes right |
 | `install.ps1`, `uninstall.ps1` | copy into / remove from `~/.config/herdr-app` |
