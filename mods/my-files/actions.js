@@ -126,6 +126,7 @@ export const actionsMethods = {
   menuRow(depth, t) {
     const m = this.menu, isRoot = m.path === "";
     return h_flex().id("file-menu").flex_none().pl(8 + depth * 16).pr(8).py(4).gap(4).items_center().flex_wrap().rounded(6).bg(t.raised)
+      .on_mouse_down("left", (_e, cx) => cx.stop_propagation())
       .children(this.nameAction ? [
         textInput("file-name", this.nameInput, this.typing === "name", t),
         button("file-name-ok", { "new-file": "Create file", "new-folder": "Create folder", rename: "Rename" }[this.nameAction], t, (_e, cx) => this.fileOp(this.nameAction, cx), { primary: true }),

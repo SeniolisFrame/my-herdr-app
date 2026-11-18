@@ -200,6 +200,8 @@ export default class Files extends View {
       .child(button("files-replace-all", this.replacing ? "Replacing…" : `Replace all (${new Set(this.results.rows.map((r) => r.path)).size} files)`, t,
         (_e, cx) => this.replaceHits(this.results.rows, cx), { primary: true, enabled: !this.replacing }));
     const tree = v_flex().id("files-tree").flex_1().min_h(0).overflow_y_scrollbar().p(6)
+      // A click anywhere in the tree (a row too) closes an open menu; the menu row stops its own clicks.
+      .on_mouse_down("left", (_e, cx) => { if (this.menu) { this.menu = null; this.nameAction = null; cx.notify(); } })
       .when(this.menu?.path === "", el => el.child(this.menuRow(0, t))).children(this.treeRows("", 0, [], t))
       .when(Boolean(this.error) || !this.entries.get("")?.length, el => el.child(div().p(8).text_size(12).text_color(t.dim).child(this.error || (this.loading ? "Loading files…" : this.root ? "No files" : "No folder"))))
       .when(this.limited, el => el.child(div().p(8).text_size(11).text_color(t.dim).child("File list limited to 500 entries per folder and 5,000 total")));

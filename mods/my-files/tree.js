@@ -89,7 +89,8 @@ export const treeMethods = {
       this.entries = saved?.entries ?? new Map(); this.folders = saved?.folders ?? new Set();
       this.context = { key: next, cwd, on, top: saved?.top, entries: this.entries, folders: this.folders }; this.root = cwd; this.on = on;
       this.pending = new Set(); this.marks = saved?.marks ?? {}; this.close(); this.watched = null; this.watchToken = null; this.error = null; this.limited = false;
-      this.loading = false; this.results = null; this.search.set_value(""); this.replaceWith.set_value(""); // another place: its own search this.isRepo = saved?.isRepo ?? false; this.menu = null;
+      this.loading = false; this.results = null; this.search.set_value(""); this.replaceWith.set_value(""); // another place: its own search
+      this.isRepo = saved?.isRepo ?? false; this.menu = null; this.nameAction = null;
       if (saved?.file) this.open(saved.file, null, cx);
     }
     if (!cwd) return;
