@@ -265,7 +265,7 @@ export const actionsMethods = {
   },
 
   merge(branch, cx) {
-    this.menu = null;
+    this.menu = null; this.mergeFor = null;
     this.act("Merge", async () => { await this.git(["merge", "--no-edit", branch], NET); return `Merged ${branch}`; }, cx);
   },
 
@@ -298,5 +298,11 @@ export const actionsMethods = {
   // A merge commit is reverted against its first parent (the branch it was merged into).
   revert(c, cx) {
     this.act("Revert", async () => { await this.git(["revert", "--no-edit", ...(c.parents.length > 1 ? ["-m", "1"] : []), c.hash]); return `Reverted ${c.short}`; }, cx);
+  },
+
+  // Asks first. --mixed: the branch moves to c; the later commits leave it, their changes stay in the files.
+  reset(c, cx) {
+    if (this.confirm?.reset !== c.hash) { this.confirm = { reset: c.hash }; cx.notify(); return; }
+    this.act("Reset", async () => { await this.git(["reset", "-q", "--mixed", c.hash]); return `${this.branch} now at ${c.short}, later changes kept unstaged`; }, cx);
   },
 };

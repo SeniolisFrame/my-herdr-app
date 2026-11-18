@@ -73,7 +73,7 @@ export default class Changes extends View {
       history: () => this.openLog(cx),
       "log-search": () => { this.logSearch.set_value(arg); this.logQuery = arg.toLowerCase(); },
       show: () => this.showCommit(arg, cx),
-      pick: () => { this.picked = this.log?.find((r) => r.hash.startsWith(arg))?.hash ?? null; if (this.picked) this.readCommit(this.picked, cx); },
+      pick: () => { this.picked = this.riskyFor = this.log?.find((r) => r.hash.startsWith(arg))?.hash ?? null; if (this.picked) this.readCommit(this.picked, cx); },
     }[name];
     run?.();
   }
@@ -107,7 +107,7 @@ export default class Changes extends View {
       }
       this.context = context; this.root = null; this.files = []; this.sel = null; this.setLines([], "");
       this.error = null; this.note = null; this.watched = null; this.watchToken = null; this.view = "changes"; this.menu = null; this.confirm = null;
-      this.amend = false; this.askFile = null; this.logSearch.set_value(""); this.logQuery = ""; this.diffs = null; this.changed = 0; this.branches = null; this.commits = new Map();
+      this.riskyFor = null; this.mergeFor = null; this.amend = false; this.askFile = null; this.logSearch.set_value(""); this.logQuery = ""; this.diffs = null; this.changed = 0; this.branches = null; this.commits = new Map();
       this.log = null; this.logRoot = null; this.logToken = null; this.reading = null;
       Object.assign(this, this.saved.get(context));
       this.loading = false; // the old place's load carries on behind and keeps its result for it
@@ -248,7 +248,7 @@ export default class Changes extends View {
     if (k === "escape") {
       cx.stop_propagation();
       if (this.typing) { this.typing = null; this.handle.focus(); }
-      else if (this.menu || this.confirm) { this.menu = null; this.confirm = null; }
+      else if (this.menu || this.confirm || this.riskyFor || this.mergeFor) { this.menu = null; this.confirm = null; this.riskyFor = null; this.mergeFor = null; }
       else if (this.view === "commit") this.view = "log";
       else if (this.view === "log") this.view = "changes";
       else focusChat();

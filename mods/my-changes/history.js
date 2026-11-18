@@ -69,26 +69,28 @@ export const historyMethods = {
 
   sync(cx) { this.refresh(cx); this.loadLog(cx); },
 
-  // What the picked commit offers: its branches to check out, merge or delete, the
-  // commit itself to cherry-pick or revert.
+  // What the picked commit offers, only after a right-click: none sit one stray click away.
   logActions(c, t) {
-    const out = [button("log-view", "View changes", t, (_e, cx) => this.showCommit(c.hash, cx))];
+    const out = [], danger = [];
     const branches = [...c.refs.local.map((b) => [b, false]), ...c.refs.remote.filter((r) => !c.refs.local.includes(r.replace(/^[^/]+\//, ""))).map((b) => [b, true])];
     for (const [b, remote] of branches) {
       if (b === this.branch) continue;
       out.push(button(`log-co-${b}`, `Checkout ${b}`, t, (_e, cx) => this.checkout(b, remote, cx)));
-      out.push(button(`log-merge-${b}`, `Merge ${b} into ${this.branch}`, t, (_e, cx) => this.merge(b, cx)));
+      danger.push(button(`log-merge-${b}`, `Merge ${b} into ${this.branch}`, t, (_e, cx) => this.merge(b, cx)));
       const del = this.confirm?.branch === b ? (this.confirm.force ? `Force delete ${b}` : `Delete ${b}? click again`) : `Delete ${b}`;
-      if (!remote) out.push(button(`log-del-${b}`, del, t, (_e, cx) => this.deleteBranch(b, cx), { danger: true }));
+      if (!remote) danger.push(button(`log-del-${b}`, del, t, (_e, cx) => this.deleteBranch(b, cx), { danger: true }));
     }
     if (!branches.length && !c.refs.head) {
       out.push(button("log-co-commit", "Checkout commit", t, (_e, cx) => this.act("Checkout", async () => { await this.git(["switch", "--detach", c.hash]); return `On ${c.short} (no branch)`; }, cx)));
-      out.push(button("log-merge-commit", `Merge into ${this.branch}`, t, (_e, cx) => this.merge(c.hash, cx)));
+      danger.push(button("log-merge-commit", `Merge into ${this.branch}`, t, (_e, cx) => this.merge(c.hash, cx)));
     }
-    if (!c.refs.head) out.push(button("log-cherry", `Cherry-pick onto ${this.branch}`, t, (_e, cx) => this.cherryPick(c.hash, cx)));
-    out.push(button("log-revert", "Revert", t, (_e, cx) => this.revert(c, cx)));
-    out.push(button("log-copy", "Copy hash", t, (_e, cx) => { cx.write_to_clipboard(c.hash); this.note = { text: `Copied ${c.short}` }; cx.notify(); }));
-    return out;
+    if (!c.refs.head) danger.push(button("log-cherry", `Cherry-pick onto ${this.branch}`, t, (_e, cx) => this.cherryPick(c.hash, cx)));
+    danger.push(button("log-revert", "Revert", t, (_e, cx) => this.revert(c, cx)));
+    // Not mid merge/cherry-pick/revert: a reset there drops it and leaves the conflict markers.
+    if (!c.refs.head && this.branch && !this.inProgress) danger.push(button("log-reset", this.confirm?.reset === c.hash ? `Reset ${this.branch} here? click again` : `Reset ${this.branch} here`, t,
+      (_e, cx) => this.reset(c, cx), { danger: true }));
+    return [button("log-view", "View changes", t, (_e, cx) => this.showCommit(c.hash, cx)), ...out,
+      button("log-copy", "Copy hash", t, (_e, cx) => { cx.write_to_clipboard(c.hash); this.note = { text: `Copied ${c.short}` }; cx.notify(); }), ...danger];
   },
 
   showCommit(hash, cx) {
@@ -132,7 +134,8 @@ export const historyMethods = {
       const c = paint(r.color), x = laneX(r.col), merge = r.parents.length > 1;
       return h_flex().id(`log-${r.hash}`).w_full().h(ROW).flex_none().pr(10).gap(6).items_center().cursor_pointer()
         .when(this.picked === r.hash, (e) => e.bg(t.selected)).hover((s) => s.bg(t.hover))
-        .on_click((e, cx) => { if (e.click_count > 1) this.showCommit(r.hash, cx); else { this.picked = r.hash; this.confirm = null; this.readCommit(r.hash, cx); cx.notify(); } })
+        .on_click((e, cx) => { if (e.click_count > 1) this.showCommit(r.hash, cx); else { this.picked = r.hash; this.riskyFor = null; this.confirm = null; this.readCommit(r.hash, cx); cx.notify(); } })
+        .on_mouse_down("right", (_e, cx) => { this.picked = this.riskyFor = r.hash; this.confirm = null; cx.notify(); })
         .when(!q, (e) => e.child(div().relative().flex_none().w(width).h(ROW).overflow_hidden()
           .children(r.top.filter(shown).map((l) => graphLine(l, "top", paint)))
           .children(r.bottom.filter(shown).map((l) => graphLine(l, "bottom", paint)))
@@ -147,10 +150,14 @@ export const historyMethods = {
     return [
       h_flex().flex_none().px(10).pt(6).child(textInput("log-search", this.logSearch, this.typing === "log", t)),
       h_flex().flex_none().px(10).py(6).gap(5).items_center().flex_wrap().border_b(1).border_color(t.border).text_size(12)
-        .children(picked ? [div().text_color(t.dim).font_family(settings().font_family ?? "JetBrains Mono").child(picked.short), ...this.logActions(picked, t)]
-          : [div().text_color(t.dim).child(q ? `${rows.length} of the last 500 commits` : "Click a commit for its actions · double-click to see its changes")]),
+        .child(div().text_color(t.dim).child(q ? `${rows.length} of the last 500 commits` : "Right-click a commit for its actions · double-click: its changes")),
       // A page at a time: every row and graph line is drawn again on each redraw of the window.
-      v_flex().id("log").flex_1().min_h(0).overflow_y_scrollbar().text_size(12).children(rows.slice(0, this.logShown).map(row))
+      // The right-clicked commit's actions open in a row just under it, like the Files menu.
+      v_flex().id("log").flex_1().min_h(0).overflow_y_scrollbar().text_size(12)
+        .children(rows.slice(0, this.logShown).flatMap((r) => r.hash === this.riskyFor && picked?.hash === r.hash
+          ? [row(r), v_flex().id("log-menu").flex_none().mx(6).px(8).py(4).gap(2).items_start().rounded(6).bg(t.raised)
+            .on_mouse_down("left", (_e, cx) => cx.stop_propagation()).children(this.logActions(r, t))]
+          : [row(r)]))
         .when(rows.length > this.logShown, (e) => e.child(h_flex().flex_none().p(8).justify_center()
           .child(button("log-more", `Show ${Math.min(LOG_PAGE, rows.length - this.logShown)} more (${rows.length - this.logShown} left)`, t,
             (_e, cx) => { this.logShown += LOG_PAGE; cx.notify(); })))),

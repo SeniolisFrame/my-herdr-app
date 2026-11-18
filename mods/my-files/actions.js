@@ -1,5 +1,5 @@
 // Files: search and replace across files, @path to the chat, new / rename / delete.
-import { h_flex } from "gpui-base";
+import { h_flex, v_flex } from "gpui-base";
 import { exec, readTextFile, writeTextFile, window } from "herdr";
 import { READ, sendToChat, untab, button, textInput } from "./common.js";
 import { MAX_EDIT } from "./editor.js";
@@ -125,7 +125,8 @@ export const actionsMethods = {
 
   menuRow(depth, t) {
     const m = this.menu, isRoot = m.path === "";
-    return h_flex().id("file-menu").flex_none().pl(8 + depth * 16).pr(8).py(4).gap(4).items_center().flex_wrap().rounded(6).bg(t.raised)
+    // One item per line; the name box and its buttons still share a line.
+    return (this.nameAction ? h_flex().gap(4).items_center().flex_wrap() : v_flex().gap(2).items_start()).id("file-menu").flex_none().pl(8 + depth * 16).pr(8).py(4).rounded(6).bg(t.raised)
       .on_mouse_down("left", (_e, cx) => cx.stop_propagation())
       .children(this.nameAction ? [
         textInput("file-name", this.nameInput, this.typing === "name", t),
