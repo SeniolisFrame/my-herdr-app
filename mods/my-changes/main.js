@@ -153,7 +153,7 @@ export default class Changes extends View {
     if (context !== this.context) {
       this.context = context; this.root = null; this.files = []; this.sel = null; this.setLines([], "");
       this.error = null; this.note = null; this.watched = null; this.view = "changes"; this.menu = null; this.confirm = null;
-      this.amend = false; this.askFile = null; this.diffs = null; this.changed = 0; this.branches = null; this.commits = new Map();
+      this.amend = false; this.askFile = null; this.logSearch.set_value(""); this.logQuery = ""; this.diffs = null; this.changed = 0; this.branches = null; this.commits = new Map();
     }
     if (!cwd) return;
     this.loading = true; this.again = false;

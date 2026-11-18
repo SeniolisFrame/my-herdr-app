@@ -11,6 +11,8 @@ Fork git client around your chat pane. It is the desktop version of
  history          │                   │ stash, history graph
 ```
 
+![Files on the left, Claude Code in the middle, Changes on the right with four lines picked to stage](docs/overview.png)
+
 Both panels follow the focused pane's folder. These are native herdr-app panels
 (GPUI), so Thai text renders correctly, the mouse works everywhere, and files open
 in a real editor.
@@ -186,6 +188,8 @@ rm -rf "$APP/mods/my-files" "$APP/mods/my-changes" "$APP/layouts/my-herdr.json"
   other branch has asks again as **Force delete**), **Checkout commit** / **Merge**
   for a commit with no branch, **Cherry-pick onto** the current branch, **Revert**,
   **Copy hash**. Double-click opens its changes.
+
+  ![History: the branch graph with branch, remote and tag labels, and the actions for a picked commit](docs/history.png)
 
 Both panels update when files change in the folder (and after their own actions);
 there is no timer. **Sync** reads everything again.
