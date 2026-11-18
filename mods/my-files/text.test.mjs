@@ -1,6 +1,15 @@
 // node mods/my-files/text.test.mjs
 import assert from "node:assert/strict";
-import { usesTabs, tabsToSpaces, spacesToTabs, replaceOnLines, replaceAll, snippet } from "./text.js";
+import { usesTabs, tabsToSpaces, spacesToTabs, replaceOnLines, replaceAll, snippet, parseCsv, guessSeparator } from "./text.js";
+
+// CSV: quotes hold the separator, line breaks and "" ; CRLF; no row for the last newline.
+assert.deepEqual(parseCsv('name,note\r\n"Lee, D","say ""hi""\nthere"\r\nx,\n', ","),
+  [["name", "note"], ["Lee, D", 'say "hi"\nthere'], ["x", ""]]);
+assert.deepEqual(parseCsv("a;b\n1;2", ";"), [["a", "b"], ["1", "2"]]);
+assert.deepEqual(parseCsv("", ","), []);
+assert.equal(guessSeparator('"a,b";c;d\n1,2'), ";"); // commas inside quotes don't count
+assert.equal(guessSeparator("a\tb\tc"), "\t");
+assert.equal(guessSeparator("single"), ",");
 
 // Send to chat: line numbers of the selection, a trailing newline doesn't add a line.
 const src = "a\nbb\ncc\ndd\n";

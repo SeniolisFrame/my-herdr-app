@@ -29,11 +29,15 @@ export default class Files extends View {
     this.find.on("submit", (_e, cx) => this.findNext(cx));
     this.find.on("focus", (_e, cx) => { this.typing = "find"; cx.notify(); });
     this.find.on("blur", (_e, cx) => { this.typing = null; cx.notify(); });
+    this.find.on("change", (_e, cx) => { if (this.mode === "table") cx.notify(); }); // the table filters as you type
     this.replaceIn = InputState.new({ placeholder: "Replace with" });
     this.replaceIn.on("submit", (_e, cx) => this.replaceOne(cx));
     this.nameInput = InputState.new({ placeholder: "Name" });
     this.nameInput.on("submit", (_e, cx) => this.fileOp(this.nameAction, cx));
-    for (const [state, name] of [[this.replaceIn, "replace-in"], [this.nameInput, "name"]]) {
+    // A CSV table's separator: typing another one splits the table again.
+    this.sepIn = InputState.new({ placeholder: "auto" });
+    this.sepIn.on("change", (_e, cx) => { if (this.mode === "table" && this.sepIn.value() !== this.table?.sep) { this.makeTable(); cx.notify(); } });
+    for (const [state, name] of [[this.replaceIn, "replace-in"], [this.nameInput, "name"], [this.sepIn, "sep"]]) {
       state.on("focus", (_e, cx) => { this.typing = name; cx.notify(); });
       state.on("blur", (_e, cx) => { this.typing = null; cx.notify(); });
     }
@@ -62,6 +66,8 @@ export default class Files extends View {
       history: () => this.file && this.showHistory(cx),
       send: () => (arg || this.file) && this.send(arg || this.file, cx),
       "send-code": () => this.code && this.sendCode(cx), // the selected code, with its file and lines
+      table: () => this.isTable() && this.showTable(cx), // a CSV as a table, or back to its text
+      separator: () => { this.sepIn.set_value(arg); if (this.mode === "table") this.makeTable(); },
       "replace-in-file": () => { const [q, to] = arg.split("|"); this.find.set_value(q); this.replaceIn.set_value(to ?? ""); this.replaceEvery(cx); },
       menu: () => this.openMenu(arg, cx),
       "new-file": () => this.nameThen("new-file", arg, cx),
@@ -117,6 +123,29 @@ export default class Files extends View {
     return out;
   }
 
+  // A CSV as a table: its first row the header, the rest filtered by Find (any cell, any
+  // case), only the rows on screen built; wide tables scroll sideways.
+  tableView(t, font) {
+    const tb = this.table, q = this.find.value().trim().toLowerCase();
+    if (tb.q !== q) {
+      tb.q = q; tb.shown = [];
+      for (let i = 1; i < tb.rows.length; i++) if (!q || tb.rows[i].some((c) => c.toLowerCase().includes(q))) tb.shown.push(i);
+    }
+    const line = (cells, n, head) => h_flex().h(20).flex_none().items_center().when(head, (e) => e.bg(t.raised).font_semibold())
+      .child(div().w(44).flex_none().px(6).text_right().text_color(t.dim).child(head ? "" : String(n)))
+      .children(tb.widths.map((w, j) => div().w(w).flex_none().px(6).truncate().child((cells[j] ?? "").replace(/\r?\n/g, " ↵ "))));
+    // min_w(0) down to the scroll box: a wide table scrolls inside the panel, not widens it.
+    return v_flex().flex_1().min_h(0).w_full().min_w(0)
+      .child(h_flex().flex_none().px(10).py(4).gap(6).items_center().text_size(12).text_color(t.dim).border_b(1).border_color(t.border)
+        .child("Separator").child(div().w(64).child(textInput("files-sep", this.sepIn, this.typing === "sep", t)))
+        .child(div().flex_1()).child(`${tb.shown.length}${q ? ` of ${Math.max(0, tb.rows.length - 1)}` : ""} rows`))
+      .child(div().flex_1().min_h(0).w_full().min_w(0).relative()
+        .child(div().id("files-table-x").size_full().overflow_x_scrollbar()
+          .child(v_flex().w(44 + tb.widths.reduce((a, b) => a + b, 0)).h_full().font_family(font).text_size(12)
+            .child(line(tb.rows[0] ?? [], 0, true))
+            .child(lazyRows("files-table", tb.shown.length, (i) => line(tb.rows[tb.shown[i]], tb.shown[i], false), { font })))));
+  }
+
   fileBody(t) {
     if (!this.code) return div().p(12).text_color(t.dim).child(this.fileError || "Loading file…");
     if (this.mode === "edit") {
@@ -133,8 +162,9 @@ export default class Files extends View {
           .on_mouse_down_out((_e, cx) => { this.codeMenu = null; cx.notify(); })
           .child(iconButton("code-send", "mods/my-files/icon-chat.svg", "Send to chat", t, (_e, cx) => this.sendCode(cx)))));
     }
-    if (!this.rows) return div().p(12).text_color(t.dim).child("Loading…");
     const font = settings().font_family ?? "JetBrains Mono";
+    if (this.mode === "table" && this.table) return this.tableView(t, font);
+    if (!this.rows) return div().p(12).text_color(t.dim).child("Loading…");
     if (this.mode === "blame") {
       const rows = this.rows;
       return lazyRows("files-blame", rows.length, (i) => {
@@ -186,6 +216,7 @@ export default class Files extends View {
         .when(this.isRepo, el => el.child(buttonGroup(t, [
           tool("blame", "blame", "Blame", (_e, cx) => this.showBlame(cx), { active: this.mode === "blame" }),
           tool("history", "history", "History", (_e, cx) => this.showHistory(cx), { active: this.mode === "history" || this.mode === "commit" })])))
+        .when(this.isTable() && Boolean(this.code), el => el.child(tool("table", "table", "Table", (_e, cx) => this.showTable(cx), { active: this.mode === "table" })))
         .child(tool("send", "chat", "Chat", (_e, cx) => this.send(file, cx)))
         .when(!this.readonly && Boolean(this.code), el => el.child(tool("replace-toggle", "replace", "Replace", (_e, cx) => { this.showReplace = !this.showReplace; cx.notify(); }, { active: this.showReplace }))
           .child(div().flex_1())

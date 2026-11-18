@@ -1,5 +1,5 @@
-// Files: listing folders (in-process here; sh or PowerShell on another machine) and the refresh.
-import { exec } from "herdr";
+// Files: listing folders (in-process where readdir reaches, else sh or PowerShell) and the refresh.
+import { exec, window } from "herdr";
 import { readdir } from "fs/promises";
 import { location, locationKey, READ, watchWhile } from "./common.js";
 
@@ -8,8 +8,8 @@ export const PER_FOLDER = 500, TOTAL = 5000;
 // PowerShell takes a 'single-quoted' string with its quote marks (curly ones too) doubled.
 export const psQuote = (s) => "'" + s.replace(/['‘’‚‛]/g, "$&$&") + "'";
 
-// A Windows machine without sh (another machine: readdir is local only): several folders
-// in one PowerShell (UTF-8 output, links checked), as starting it costs 0.3s to 2s.
+// Windows where readdir can't reach (another machine, a folder outside home): several
+// folders in one PowerShell (UTF-8 output, links checked), as starting it costs 0.3s to 2s.
 export async function windowsDirectories(root, rels, on, deep) {
   const script = "[Console]::OutputEncoding = [System.Text.UTF8Encoding]::new($false); & { param($root, $deep, [string[]]$rels) "
     + "function L($p) { ,@(Get-ChildItem -LiteralPath $p -Force -ErrorAction Stop | Where-Object Name -ne '.git' | Select-Object -First 501 | ForEach-Object { @{ name=$_.Name; dir=($_.PSIsContainer -and (-not ($_.Attributes -band [IO.FileAttributes]::ReparsePoint) -or -not $_.LinkType -or ($_.Target -and [IO.Directory]::Exists(([IO.Path]::Combine([IO.Path]::GetDirectoryName($_.FullName), $_.Target[0])))))) } }) } "
@@ -35,10 +35,14 @@ async function localDirectory(path, links) {
   return Promise.all(list.map(async (e) => ({ name: e.name, dir: await isDir(e) })));
 }
 
+// Roots readdir can't read (a mod's readdir reaches the home folder, not C:\demo, say): those
+// are listed by a program, as before.
+const noReaddir = new Set();
+
 // Folders under root, by path from root ("" is root) → their entries, or null when gone.
 // `deep` lists each folder's subfolders too (the first 40), so opening one shows at once.
 export async function directories(root, rels, on, deep) {
-  if (!on) {
+  if (!on && !noReaddir.has(root)) {
     const out = new Map();
     await Promise.all(rels.map(async (rel) => {
       const entries = await localDirectory(rel ? `${root}/${rel}` : root, true);
@@ -48,8 +52,10 @@ export async function directories(root, rels, on, deep) {
         if (list && !out.has(sub)) out.set(sub, list);
       }));
     }));
-    return out;
+    if (out.get("") !== null) return out; // no root asked (a folder opened), or it was read
+    noReaddir.add(root);
   }
+  if (!on && window()?.platform === "windows") return windowsDirectories(root, rels, on, deep);
   const out = new Map();
   for (const rel of rels) {
     try { out.set(rel, await directory(rel ? `${root}/${rel}` : root, on)); }

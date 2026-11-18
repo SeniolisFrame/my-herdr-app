@@ -2,7 +2,7 @@
 import { EditorState } from "gpui-base";
 import { readTextFile, writeTextFile, theme, settings } from "herdr";
 import { READ, git, toLines, untab, diffRows, sendToChat } from "./common.js";
-import { usesTabs, tabsToSpaces, spacesToTabs, replaceAll, snippet } from "./text.js";
+import { usesTabs, tabsToSpaces, spacesToTabs, replaceAll, snippet, parseCsv, guessSeparator } from "./text.js";
 
 export const LANG = { ts: "js", tsx: "js", mts: "js", cts: "js", jsx: "js", mjs: "js", toml: "yaml", jsonc: "json", svelte: "html", vue: "html" };
 export const MAX_EDIT = 400000;
@@ -28,6 +28,31 @@ export const editorMethods = {
   close() {
     this.code?.release(); this.code = null; this.file = null; this.fileError = null; this.mode = "edit";
     this.rows = null; this.note = null; this.confirmClose = false; this.codeMenu = null;
+    this.table = null; this.sepIn.set_value(""); // the next CSV finds its own separator
+  },
+
+  // CSV / TSV: the open file as a table (Find filters its rows, Separator splits it).
+  isTable() { return /\.(csv|tsv)$/i.test(this.file ?? ""); },
+
+  showTable(cx) {
+    if (this.mode === "table" || !this.code) { this.mode = "edit"; cx?.notify(); return; }
+    this.mode = "table"; this.makeTable(); cx?.notify();
+  },
+
+  // Parses the text as it is now (unsaved edits too). An empty Separator box guesses one and
+  // shows it; "tab" (or \t) is a tab.
+  makeTable() {
+    const text = this.tabs ? spacesToTabs(this.code.value()) : this.code.value(), typed = this.sepIn.value();
+    const sep = typed === "tab" || typed === "\\t" ? "\t" : typed ? typed[0] : guessSeparator(text), named = sep === "\t" ? "tab" : sep;
+    const rows = parseCsv(text, sep), head = rows.slice(0, 200);
+    let cols = 0;
+    for (const r of rows) if (r.length > cols) cols = r.length; // a later row may have more cells
+    // Sized by the first 200 rows: about 7px a character in the 12px code font, 40 to 320.
+    const longest = (j) => Math.max(0, ...head.map((r) => (r[j] ?? "").length));
+    const widths = Array.from({ length: cols }, (_, j) => { const n = longest(j); return n ? Math.min(320, Math.max(40, 14 + 7 * n)) : 120; });
+    // sep: what the box shows for it, so the box's change event (main.js) knows this one is made.
+    this.table = { rows, widths, q: null, shown: [], sep: named };
+    if (!typed) this.sepIn.set_value(named);
   },
 
   // Files under the tree's folder are kept relative; Changes may send a repo file
@@ -65,6 +90,7 @@ export const editorMethods = {
         this.code.on("change", (_e, cx) => { const d = this.dirty(); if (d !== this.wasDirty) { this.wasDirty = d; cx.notify(); } });
         this.wasDirty = false;
         if (pos) this.goTo(pos);
+        else if (this.isTable()) this.showTable();
       } catch (e) { if (this.file === path && this.current(context)) this.fileError = `Cannot open this file: ${e}`; }
       finally { cx.notify(); }
     });
@@ -84,6 +110,7 @@ export const editorMethods = {
     this.shown = code.value(); this.wasDirty = false;
     const n = this.shown.length;
     code.set_selected_range({ start: Math.min(at.start, n), end: Math.min(at.end, n) });
+    if (this.mode === "table") this.makeTable();
   },
 
   // Puts the cursor at the start of { line }, selecting { word } on it.
@@ -135,6 +162,7 @@ export const editorMethods = {
     const q = this.find.value(), r = this.code?.selected_range();
     if (!q || !r || this.readonly) return;
     if (this.code.value().slice(r.start, r.end).toLowerCase() === q.toLowerCase()) this.code.replace(this.replaceIn.value());
+    if (this.mode === "table") this.makeTable(); // the table shows the text as it is now
     this.findNext(cx);
   },
 
@@ -143,6 +171,7 @@ export const editorMethods = {
     if (!q || !this.code || this.readonly) return;
     const { text, n } = replaceAll(this.code.value(), q, this.replaceIn.value());
     if (n) this.code.set_value(text);
+    if (n && this.mode === "table") this.makeTable();
     this.wasDirty = this.dirty(); this.note = n ? `Replaced ${n} in this file: save to keep it` : `“${q}” not found`;
     cx.notify();
   },

@@ -18,6 +18,36 @@ export function snippet(path, text, start, end) {
   return `${path}:${from === to ? from : `${from}-${to}`}\n${fence}${lang}\n${code}\n${fence}\n`;
 }
 
+// CSV text → rows of cells, split on `sep`. A cell in "..." may hold sep, line breaks
+// and "" (one quote); CRLF and a last empty line are fine.
+export function parseCsv(text, sep) {
+  const rows = [];
+  let row = [], cell = "", quoted = false;
+  for (let i = 0; i < text.length; i++) {
+    const c = text[i];
+    if (quoted) {
+      if (c !== '"') cell += c;
+      else if (text[i + 1] === '"') { cell += '"'; i++; }
+      else quoted = false;
+    } else if (c === '"' && cell === "") quoted = true;
+    else if (c === sep) { row.push(cell); cell = ""; }
+    else if (c === "\n" || c === "\r") {
+      if (c === "\r" && text[i + 1] === "\n") i++;
+      row.push(cell); rows.push(row); row = []; cell = "";
+    } else cell += c;
+  }
+  if (cell !== "" || row.length) { row.push(cell); rows.push(row); }
+  return rows;
+}
+
+// The separator the first line uses most: , ; tab or | (outside quotes); "," if none.
+export function guessSeparator(text) {
+  const line = text.slice(0, text.search(/\r?\n|$/)).replace(/"[^"]*"/g, "");
+  let best = ",", most = 0;
+  for (const s of [",", ";", "\t", "|"]) { const n = line.split(s).length - 1; if (n > most) { best = s; most = n; } }
+  return best;
+}
+
 // q found literally, in any case.
 const literal = (q) => new RegExp(q.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"), "gi");
 

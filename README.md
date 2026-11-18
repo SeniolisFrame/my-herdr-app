@@ -133,6 +133,10 @@ rm -rf "$APP/mods/my-files" "$APP/mods/my-changes" "$APP/layouts/my-herdr.json"
   **All** replaces every one in the file (then Save).
 - Tab-indented files (Go) show their tabs as 4 spaces (the editor draws a tab as
   nothing) and are saved with tabs again.
+- A `.csv` / `.tsv` file opens as a table (first row as the header). **Find in file**
+  keeps the rows that contain the text; **Separator** is guessed (`,` `;` tab `|`),
+  type another one (`tab` for a tab) to split it again. **Table** switches to its text
+  to edit.
 - **Search all files** (`/`): every text file, tracked or not; click a hit to open
   the file at that line.
 - **Replace across files**: after a search, type the new text under it and
@@ -217,7 +221,7 @@ or script them: `herdr-app do my-changes.pull`.
 
 - `my-files.<cmd>`: `sync`, `toggle:<folder>`, `open:<path>[:<line>]`, `save`, `close`, `find:<text>`,
   `replace-in-file:<text>|<new>`, `search:<text>`, `replace-all:<new>`, `blame`,
-  `history`, `send[:<path>]`, `send-code`, `type:<text>`, `menu:<path>` then `new-file:<name>`,
+  `history`, `send[:<path>]`, `send-code`, `table`, `separator:<s>`, `type:<text>`, `menu:<path>` then `new-file:<name>`,
   `new-folder:<name>`, `rename:<name>` or `delete` (twice)
 - `my-changes.<cmd>`: `sync`, `select:<path>` (or `select:staged:<path>` /
   `select:unstaged:<path>`), `stage`, `stage-all`, `unstage-all`, `hunk:<n>`,
@@ -242,8 +246,8 @@ Example `keys.json` section:
 - History shows the last 500 commits; its search looks in those.
 - Every git call starts a program (about 25 ms here, more on slow machines): the
   panels show what they expect first and read in the background, but an action
-  still waits for its own git. Folders on this computer are listed in-process; a
-  space on another machine lists them with sh (or PowerShell), which is slower.
+  still waits for its own git. Folders under your home folder are listed in-process;
+  others (`C:\demo`, a space on another machine) with PowerShell or sh, which is slower.
 - A file with both CRLF and LF line endings is saved with CRLF on every line.
 
 ## Code
