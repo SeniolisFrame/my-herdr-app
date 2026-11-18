@@ -69,11 +69,12 @@ export default class Changes extends View {
       "new-branch": () => { this.branchName.set_value(arg); this.newBranch(cx); },
       "delete-branch": () => this.deleteBranch(arg, cx),
       "cherry-pick": () => this.cherryPick(arg, cx),
-      revert: () => { const c = this.log?.find((r) => r.hash.startsWith(arg)); if (c) this.revert(c, cx); },
+      // An empty hash would match every commit: the newest would be reverted.
+      revert: () => { const c = arg && this.log?.find((r) => r.hash.startsWith(arg)); if (c) this.revert(c, cx); },
       history: () => this.openLog(cx),
       "log-search": () => { this.logSearch.set_value(arg); this.logQuery = arg.toLowerCase(); },
       show: () => this.showCommit(arg, cx),
-      pick: () => { this.picked = this.riskyFor = this.log?.find((r) => r.hash.startsWith(arg))?.hash ?? null; if (this.picked) this.readCommit(this.picked, cx); },
+      pick: () => { this.picked = this.riskyFor = (arg && this.log?.find((r) => r.hash.startsWith(arg)))?.hash ?? null; if (this.picked) this.readCommit(this.picked, cx); },
     }[name];
     run?.();
   }

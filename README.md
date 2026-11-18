@@ -58,8 +58,8 @@ cd my-herdr-app
 APP="${HERDR_APP_HOME:-$HOME/.config/herdr-app}"
 for m in my-files my-changes; do
   mkdir -p "$APP/mods/$m"
-  cp mods/$m/*.js mods/$m/mod.json "$APP/mods/$m/"   # not the *.test.mjs files
-  [ -d mods/$m/icons ] && cp -r mods/$m/icons "$APP/mods/$m/"
+  cp shared/common.js mods/$m/*.js mods/$m/mod.json "$APP/mods/$m/"   # not the *.test.mjs files
+  [ -d mods/$m/icons ] && cp -r mods/$m/icons mods/$m/*.svg "$APP/mods/$m/"
   herdr-app check "$APP/mods/$m"     # must say: check passed
 done
 cp layouts/my-herdr.json "$APP/layouts/"
@@ -240,10 +240,10 @@ Example `keys.json` section:
 - On Windows every git and folder listing starts a program, which costs 0.3 s to
   2 s on some machines: the panels show what they expect first and read in the
   background, but an action still waits for its own git.
+- A file with both CRLF and LF line endings is saved with CRLF on every line.
+
 ## Code
 
-| Path | What |
-| --- | --- |
 Each panel's `main.js` holds the class (init, commands, refresh, keys, render); the
 other files add its methods by job (`Object.assign(<Class>.prototype, ...)`).
 

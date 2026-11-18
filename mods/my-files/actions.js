@@ -4,6 +4,7 @@ import { exec, readTextFile, writeTextFile, window } from "herdr";
 import { READ, sendToChat, untab, button, textInput } from "./common.js";
 import { MAX_EDIT } from "./editor.js";
 import { replaceOnLines } from "./text.js";
+import { psQuote } from "./tree.js";
 
 export const actionsMethods = {
   // Replaces the search text (any case, as the search matched it) on the hit lines
@@ -11,6 +12,8 @@ export const actionsMethods = {
   replaceHits(hits, cx) {
     const q = this.results?.q, to = this.replaceWith.value();
     if (!q || this.replacing) return;
+    // Reads and writes below are local: a remote hit's path could name a local file.
+    if (this.on) { this.note = "File actions work on this computer only"; cx.notify(); return; }
     const byFile = new Map();
     for (const h of hits) byFile.set(h.path, [...(byFile.get(h.path) ?? []), h.line]);
     this.replacing = true; this.note = null;
@@ -111,14 +114,14 @@ export const actionsMethods = {
 
   // mkdir, move (never over an existing file) and delete: PowerShell on Windows, else sh.
   async shell(action, a, b) {
-    const q = (s) => "'" + s.replace(/['‘’‚‛]/g, "$&$&") + "'";
     const [ps, sh] = {
       "new-folder": ["New-Item -ItemType Directory -Path $a | Out-Null", 'mkdir -- "$1"'],
-      rename: ["Move-Item -LiteralPath $a -Destination $b", '[ -e "$2" ] && { echo "$2 already exists" >&2; exit 1; }; mv -- "$1" "$2"'],
+      // Move-Item onto an existing folder moves into it: refused, like the sh one.
+      rename: ["if (Test-Path -LiteralPath $b) { throw ($b + ' already exists') }; Move-Item -LiteralPath $a -Destination $b", '[ -e "$2" ] && { echo "$2 already exists" >&2; exit 1; }; mv -- "$1" "$2"'],
       delete: ["Remove-Item -LiteralPath $a -Recurse -Force", 'rm -rf -- "$1"'],
     }[action];
     const r = window()?.platform === "windows"
-      ? await exec("powershell", ["-NoProfile", "-Command", `& { param($a, $b) $ErrorActionPreference = 'Stop'; ${ps} } ${q(a)} ${q(b)}`])
+      ? await exec("powershell", ["-NoProfile", "-Command", `& { param($a, $b) $ErrorActionPreference = 'Stop'; ${ps} } ${psQuote(a)} ${psQuote(b)}`])
       : await exec("sh", ["-c", sh, "files", a, b]);
     if (r.code !== 0) throw new Error((r.stderr || r.stdout).trim().split(/\r?\n/)[0] || `${action} failed`);
   },

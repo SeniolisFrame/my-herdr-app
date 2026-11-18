@@ -2,8 +2,9 @@
 // node mods/my-files/text.test.mjs
 
 // The editor draws a tab as nothing, so tab indents show as 4 spaces and turn back
-// into tabs on save. Only when no line starts with a space, so it round-trips.
-export const usesTabs = (text) => /^\t/m.test(text) && !/^ /m.test(text);
+// into tabs on save. Only when no line starts with a space, or with tabs then 4 spaces
+// (a Go raw string, say: they would come back as one more tab), so it round-trips.
+export const usesTabs = (text) => /^\t/m.test(text) && !/^ /m.test(text) && !/^\t+ {4}/m.test(text);
 export const tabsToSpaces = (text) => text.replace(/^\t+/gm, (m) => "    ".repeat(m.length));
 export const spacesToTabs = (text) => text.replace(/^( {4})+/gm, (m) => "\t".repeat(m.length / 4));
 

@@ -8,6 +8,7 @@ assert.ok(usesTabs(go));
 assert.equal(tabsToSpaces(go), "func f() {\n    if x {\n        y := 1  // a\n    }\n}\n");
 assert.equal(spacesToTabs(tabsToSpaces(go)), go);
 assert.ok(!usesTabs("a\n\tb\n  c\n")); // a space-indented line: no conversion
+assert.ok(!usesTabs("x := `\n\t    y`\n")); // tab then 4 spaces would save as 2 tabs: no conversion
 
 // Replace: only the given lines, any case, CRLF kept, `$` taken literally.
 const r = replaceOnLines("Foo foo\r\nfoo\r\nfoo\r\n", [1, 3], "FOO", "$1x");
