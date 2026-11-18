@@ -1,8 +1,8 @@
-// Shared by my-files and my-changes: keep mods/my-files/common.js and mods/my-changes/common.js identical
-// (a mod can't import from another mod's folder).
+// Shared by my-files and my-changes. A mod can't import from outside its own folder, so
+// install.ps1 copies this file into both (as ./common.js); edit it here, not there.
 import { div } from "gpui-kit";
-import { h_flex } from "gpui-base";
-import { spaces, panes, focused, agents, exec, run } from "herdr";
+import { h_flex, Input } from "gpui-base";
+import { spaces, panes, focused, agents, exec, run, watchFolder } from "herdr";
 
 // Where the panels look: the focused pane's live folder (as the shipped panels do).
 export function location() {
@@ -22,6 +22,18 @@ export async function git(root, on, args, timeout) {
   const r = await exec("git", args, { cwd: root, on, timeout });
   if (r.code !== 0) throw new Error((r.stderr || r.stdout).trim() || `git ${args[0]} failed`);
   return r.stdout;
+}
+
+// Command output (or file text) as lines: no \r, no empty last line.
+export const toLines = (text) => text.replace(/\r/g, "").replace(/\n$/, "").split("\n");
+
+// Runs onChange each time something under dir changes, for as long as alive() holds;
+// onFail when the watch can't be kept (a later refresh starts one again).
+export function watchWhile(dir, alive, onChange, onFail, cx) {
+  cx.spawn(async (cx) => {
+    try { while (alive()) { await watchFolder(dir); if (alive()) onChange(cx); } }
+    catch { if (alive()) onFail(); }
+  });
 }
 
 // The chat: the agent in the shown tab, else the focused terminal.
@@ -94,4 +106,11 @@ export function button(id, label, t, onClick, opts = {}) {
     .when(on, e => e.cursor_pointer().hover(s => s.bg(opts.primary ? t.solid : t.hover)).on_click((ev, cx) => { cx.stop_propagation(); onClick(ev, cx); }))
     .on_mouse_down("left", (_e, cx) => cx.stop_propagation())
     .child(label);
+}
+
+// A one-line text box; focusedNow draws its accent border.
+export function textInput(id, state, focusedNow, t) {
+  return div().id(id).flex_1().min_w(0).h(28).px(8).flex().items_center().rounded(7).border_1()
+    .border_color(focusedNow ? t.accent : t.border).cursor_text().on_mouse_down("left", (_e, cx) => cx.stop_propagation())
+    .child(Input.new(state).h_full().text_size(12).text_color(t.foreground));
 }

@@ -150,6 +150,8 @@ rm -rf "$APP/mods/my-files" "$APP/mods/my-changes" "$APP/layouts/my-herdr.json"
 
 ### Changes (right)
 
+- Two tabs across the top: **Changes** (with the number of changed files) and
+  **History**.
 - Stage, unstage and commit move the files at once, like Fork; git catches up
   behind (and puts them back if it refuses: a failed commit keeps its message).
   Every file's diff is read with the list, so clicking a file shows it at once.
@@ -179,10 +181,13 @@ rm -rf "$APP/mods/my-files" "$APP/mods/my-changes" "$APP/layouts/my-herdr.json"
   `!` and its text with the conflict markers. Take **Ours** or **Theirs**, or edit
   it in Files and click **Mark resolved**; then Commit (an empty message uses
   git's). **Abort** undoes the whole operation.
-- **History**: the graph of all branches, drawn like Fork: one color per line,
+- **History** tab: the graph of all branches, drawn like Fork: one color per line,
   curves where branches split and merge, branch labels (the current branch filled,
   remote branches outlined in the line's color, tags in yellow), a hollow dot for
-  merge commits. It shows 50 commits at a time (**Show 50 more** at the bottom).
+  merge commits. It shows 50 commits at a time (**Show 50 more** at the bottom). It
+  is read ahead when the repo first shows and kept as it is: opening it again reads
+  nothing; it is read again after an action that changes it (commit, merge, checkout,
+  pull, stash...) or on **Sync**. Picking a commit reads its changes ahead too.
   The search box filters the last 500 commits by message, hash, author or branch. Click a commit for its actions: **View changes**, **Checkout**,
   **Merge … into** and **Delete** for each branch on it (a branch with commits no
   other branch has asks again as **Force delete**), **Checkout commit** / **Merge**
@@ -194,7 +199,8 @@ rm -rf "$APP/mods/my-files" "$APP/mods/my-changes" "$APP/layouts/my-herdr.json"
 Both panels update when files change in the folder (and after their own actions);
 there is no timer. **Sync** reads everything again. Each workspace, and each tab in
 it, keeps its own panels (open file, open folders, selected change): switching back
-shows them at once and refreshes behind.
+shows them at once and refreshes behind. Switching away mid-load doesn't wait for it:
+the load finishes in the background and is kept for when you come back.
 
 Keys when the panel has focus: `↑` `↓` select, `space` stage or unstage, `o` open
 in Files, `c` commit message, `l` history, `s` send `@path`, `esc` back (or to the
@@ -237,13 +243,28 @@ Example `keys.json` section:
 
 | Path | What |
 | --- | --- |
-| `mods/my-files/main.js` | Files: tree, editor, search, blame, history, send |
-| `mods/my-changes/main.js` | Changes: status, diff, stage, commit, branches, history |
+Each panel's `main.js` holds the class (init, commands, refresh, keys, render); the
+other files add its methods by job (`Object.assign(<Class>.prototype, ...)`).
+
+| Path | What |
+| --- | --- |
+| `shared/common.js` | helpers both panels use (git, the chat, diff rows, buttons, text box, folder watch) |
+| `mods/my-files/main.js` | Files: the class, commands, keys, drawing |
+| `mods/my-files/tree.js` | listing folders (one PowerShell for several) and the refresh |
+| `mods/my-files/editor.js` | the open file: edit, save, find, replace, blame, history |
+| `mods/my-files/actions.js` | search and replace across files, @path, new / rename / delete |
 | `mods/my-files/text.js` | tab ↔ space indents and replacing text (test: `node mods/my-files/text.test.mjs`) |
+| `mods/my-changes/main.js` | Changes: the class, commands, status refresh, the diff, keys |
+| `mods/my-changes/actions.js` | stage, discard, commit, remote, stash, branches |
+| `mods/my-changes/history.js` | the History graph and a commit's changes |
+| `mods/my-changes/view.js` | drawing: tabs, toolbar, lists, diff, branch menu, commit box |
+| `mods/my-changes/status.js` | limits and the status-list helpers |
 | `mods/my-changes/patch.js` | patches for staging hunks and single lines (test: `node mods/my-changes/patch.test.mjs`) |
 | `mods/my-changes/graph.js` | history graph lanes (test: `node mods/my-changes/graph.test.mjs`) |
-| `mods/*/common.js` | shared helpers (same file in both mods: a mod can't import another's) |
 | `layouts/my-herdr.json` | herdr's `main` layout with Files left and Changes right |
 | `install.ps1`, `uninstall.ps1` | copy into / remove from `~/.config/herdr-app` |
 
-Check a mod after editing: `herdr-app check ~/.config/herdr-app/mods/my-files`.
+A mod can't import from outside its own folder, so `install.ps1` copies
+`shared/common.js` into both mods (in the repo too; git ignores those copies). Edit
+`shared/common.js`, never `mods/*/common.js`, then run `install.ps1`: it checks both
+mods with `herdr-app check` and stops if one fails.
