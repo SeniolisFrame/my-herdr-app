@@ -1,10 +1,11 @@
 // Files: the focused pane's folder as a tree. Open a file to edit it (ctrl+s saves),
 // search every file, see blame and history, and send @path to the chat.
-import { View, div, svg } from "gpui-kit";
+import { View, div, svg, image } from "gpui-kit";
 import { v_flex, h_flex, Editor, InputState } from "gpui-base";
 import { theme, settings, nextCommand, shared } from "herdr";
 import { locationKey, focusChat, diffRow, button, textInput } from "./common.js";
 import { TOTAL } from "./tree.js";
+import { iconFor } from "./icons.js";
 import { treeMethods } from "./tree.js";
 import { editorMethods } from "./editor.js";
 import { actionsMethods } from "./actions.js";
@@ -104,8 +105,8 @@ export default class Files extends View {
         .drag_paths([`${this.root}/${path}`], { on: this.on })
         .on_click((_e, cx) => { if (entry.dir) this.toggle(path, cx); else this.open(path, null, cx); })
         .on_mouse_down("right", (_e, cx) => { cx.stop_propagation(); this.openMenu(path, cx); })
-        .child(entry.dir ? svg(`mods/files/chevron-${open ? "down" : "right"}.svg`).size(12).flex_none().text_color(t.dim) : div().w(12).flex_none())
-        .child(svg(`mods/files/${entry.dir ? "folder" : "file"}.svg`).size(14).flex_none().text_color(t.muted))
+        .child(entry.dir ? svg(`mods/my-files/icon-caret-${open ? "down" : "right"}.svg`).size(12).flex_none().text_color(t.dim) : div().w(12).flex_none())
+        .child(image(iconFor(entry.name, entry.dir, open)).size(16).flex_none())
         .child(div().flex_1().min_w(0).truncate().child(entry.name))
         .when(Boolean(mark), el => el.child(div().text_size(11).text_color(mark === "A" ? t.ansi2 : mark === "D" || mark === "U" ? t.ansi1 : t.blocked).child(mark))));
       if (this.menu?.path === path) out.push(this.menuRow(depth, t));

@@ -59,6 +59,7 @@ APP="${HERDR_APP_HOME:-$HOME/.config/herdr-app}"
 for m in my-files my-changes; do
   mkdir -p "$APP/mods/$m"
   cp mods/$m/*.js mods/$m/mod.json "$APP/mods/$m/"   # not the *.test.mjs files
+  [ -d mods/$m/icons ] && cp -r mods/$m/icons "$APP/mods/$m/"
   herdr-app check "$APP/mods/$m"     # must say: check passed
 done
 cp layouts/my-herdr.json "$APP/layouts/"
@@ -253,6 +254,7 @@ other files add its methods by job (`Object.assign(<Class>.prototype, ...)`).
 | `mods/my-files/tree.js` | listing folders (one PowerShell for several) and the refresh |
 | `mods/my-files/editor.js` | the open file: edit, save, find, replace, blame, history |
 | `mods/my-files/actions.js` | search and replace across files, @path, new / rename / delete |
+| `mods/my-files/icons.js`, `icons/` | which icon a file or folder gets; the icons are [Material Icon Theme](https://github.com/material-extensions/vscode-material-icon-theme)'s (MIT) (test: `node mods/my-files/icons.test.mjs`) |
 | `mods/my-files/text.js` | tab ↔ space indents and replacing text (test: `node mods/my-files/text.test.mjs`) |
 | `mods/my-changes/main.js` | Changes: the class, commands, status refresh, the diff, keys |
 | `mods/my-changes/actions.js` | stage, discard, commit, remote, stash, branches |
