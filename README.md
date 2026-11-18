@@ -1,7 +1,7 @@
 # my-herdr-app
 
-A layout for [herdr-app](https://herdr.dev) (the desktop app) that works like the
-Fork git client around your chat pane. It is the desktop version of
+A layout for [herdr-app](https://herdr.dev) (the desktop app) that puts a git
+client around your chat pane. It is the desktop version of
 [my-herdr](https://github.com/SeniolisFrame/my-herdr), the plugin for the herdr TUI:
 
 ```
@@ -153,10 +153,10 @@ rm -rf "$APP/mods/my-files" "$APP/mods/my-changes" "$APP/layouts/my-herdr.json"
 
 - Two tabs across the top: **Changes** (with the number of changed files) and
   **History**.
-- Stage, unstage and commit move the files at once, like Fork; git catches up
+- Stage, unstage and commit move the files at once; git catches up
   behind (and puts them back if it refuses: a failed commit keeps its message).
   Every file's diff is read with the list, so clicking a file shows it at once.
-- Two lists, like Fork: **Unstaged** and **Staged**. A file that is partly staged
+- Two lists: **Unstaged** and **Staged**. A file that is partly staged
   is in both. The box moves a file from one list to the other; **Stage all** /
   **Unstage all**.
 - Click a file to see its diff: an unstaged file shows what isn't staged yet, a
@@ -182,7 +182,7 @@ rm -rf "$APP/mods/my-files" "$APP/mods/my-changes" "$APP/layouts/my-herdr.json"
   `!` and its text with the conflict markers. Take **Ours** or **Theirs**, or edit
   it in Files and click **Mark resolved**; then Commit (an empty message uses
   git's). **Abort** undoes the whole operation.
-- **History** tab: the graph of all branches, drawn like Fork: one color per line,
+- **History** tab: the graph of all branches: one color per line,
   curves where branches split and merge, branch labels (the current branch filled,
   remote branches outlined in the line's color, tags in yellow), a hollow dot for
   merge commits. It shows 50 commits at a time (**Show 50 more** at the bottom). It

@@ -50,7 +50,7 @@ export const actionsMethods = {
     if (this.act("Unstage all", () => this.git(this.hasHead ? ["reset", "-q"] : ["rm", "-r", "--cached", "-q", "."]), cx)) this.moved(this.files.filter((f) => sides(f).some((x) => x.side === "staged")), "staged");
   },
 
-  // Moves files to the other list now, as Fork does, while git runs.
+  // Moves files to the other list now, while git runs.
   moved(files, from) {
     for (const f of files) moveSide(f, from);
     // The shown diff is of the old side: cleared, so no hunk button can apply it to the new one.

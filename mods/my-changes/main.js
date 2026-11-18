@@ -1,4 +1,4 @@
-// Changes: git status of the focused pane's repo, Fork style. Unstaged and staged
+// Changes: git status of the focused pane's repo. Unstaged and staged
 // lists; stage files, hunks or single lines; discard, commit, amend, undo commit, ask
 // the chat for a message; branches, merge, fetch/pull/push, stash; the history graph
 // with checkout, merge, cherry-pick, revert and branch delete.
