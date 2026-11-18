@@ -11,9 +11,9 @@ export function location() {
   const on = f?.pane === null ? (f.terminal?.includes("/") ? f.terminal.split("/")[0] : null) : space?.machine ?? null;
   return { cwd: pane?.cwd || f?.cwd || space?.folder, on };
 }
-// Each workspace keeps its own state (open file, open folders) even when two are in the
-// same folder (agents started in the home folder, say).
-export const locationKey = () => JSON.stringify({ ...location(), space: spaces().find(s => s.active)?.id ?? null });
+// Each workspace and each of its tabs keeps its own state (open file, open folders) even
+// when two are in the same folder (agents started in the home folder, say).
+export const locationKey = () => JSON.stringify({ ...location(), space: spaces().find(s => s.active)?.id ?? null, tab: focused()?.tab ?? null });
 
 // git that throws with git's own message; READ writes nothing under .git, so the
 // folder watch doesn't wake itself up.

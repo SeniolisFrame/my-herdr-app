@@ -163,11 +163,12 @@ export default class Files extends View {
     const { cwd, on } = location(), next = locationKey();
     if (next !== this.context?.key) {
       if (this.dirty()) return; // keep unsaved edits: follow the chat once they're saved or dropped
-      if (this.context) this.saved.set(this.context.key, { folders: this.folders, file: this.file });
+      // Each workspace's last tree and marks show at once when it comes back; the refresh below updates them.
+      if (this.context) this.saved.set(this.context.key, { folders: this.folders, file: this.file, entries: this.entries, marks: this.marks, isRepo: this.isRepo, top: this.context.top });
       const saved = this.saved.get(next);
-      this.context = { key: next, cwd, on }; this.root = cwd; this.on = on; this.entries = new Map(); this.folders = new Set(saved?.folders);
-      this.pending = new Set(); this.marks = {}; this.close(); this.watched = null; this.error = null; this.limited = false;
-      this.loading = false; this.results = null; this.isRepo = false; this.menu = null;
+      this.context = { key: next, cwd, on, top: saved?.top }; this.root = cwd; this.on = on; this.entries = saved?.entries ?? new Map(); this.folders = new Set(saved?.folders);
+      this.pending = new Set(); this.marks = saved?.marks ?? {}; this.close(); this.watched = null; this.error = null; this.limited = false;
+      this.loading = false; this.results = null; this.isRepo = saved?.isRepo ?? false; this.menu = null;
       if (saved?.file) this.open(saved.file, null, cx);
     }
     if (!cwd) return;

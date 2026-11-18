@@ -70,7 +70,7 @@ function moveSide(f, from) {
 export default class Changes extends View {
   init(_props, cx) {
     this.handle = cx.focus_handle();
-    this.files = []; this.rows = []; this.raw = ""; this.view = "changes"; this.chosen = new Set();
+    this.files = []; this.rows = []; this.raw = ""; this.view = "changes"; this.chosen = new Set(); this.saved = new Map();
     this.message = InputState.new({ placeholder: "Commit message" });
     this.message.on("submit", (_e, cx) => this.commit(cx));
     this.message.on("change", (_e, cx) => { const has = Boolean(this.message.value().trim()); if (has !== this.hasMessage) { this.hasMessage = has; cx.notify(); } });
@@ -151,9 +151,15 @@ export default class Changes extends View {
     if (this.loading || this.busy) { this.again = true; return; }
     const { cwd, on } = location(), context = locationKey();
     if (context !== this.context) {
+      // Each workspace's last lists and diff show at once when it comes back; the refresh below updates them.
+      if (this.context && this.root) {
+        const { root, gitDir, on, top, files, branch, upstream, track, hasHead, inProgress, limited, diffs, changed, sel, rows, raw, branches, commits } = this;
+        this.saved.set(this.context, { root, gitDir, on, top, files, branch, upstream, track, hasHead, inProgress, limited, diffs, changed, sel, rows, raw, branches, commits });
+      }
       this.context = context; this.root = null; this.files = []; this.sel = null; this.setLines([], "");
       this.error = null; this.note = null; this.watched = null; this.view = "changes"; this.menu = null; this.confirm = null;
       this.amend = false; this.askFile = null; this.logSearch.set_value(""); this.logQuery = ""; this.diffs = null; this.changed = 0; this.branches = null; this.commits = new Map();
+      Object.assign(this, this.saved.get(context));
     }
     if (!cwd) return;
     this.loading = true; this.again = false;

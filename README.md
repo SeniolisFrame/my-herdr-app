@@ -192,7 +192,9 @@ rm -rf "$APP/mods/my-files" "$APP/mods/my-changes" "$APP/layouts/my-herdr.json"
   ![History: the branch graph with branch, remote and tag labels, and the actions for a picked commit](docs/history.png)
 
 Both panels update when files change in the folder (and after their own actions);
-there is no timer. **Sync** reads everything again.
+there is no timer. **Sync** reads everything again. Each workspace, and each tab in
+it, keeps its own panels (open file, open folders, selected change): switching back
+shows them at once and refreshes behind.
 
 Keys when the panel has focus: `↑` `↓` select, `space` stage or unstage, `o` open
 in Files, `c` commit message, `l` history, `s` send `@path`, `esc` back (or to the
