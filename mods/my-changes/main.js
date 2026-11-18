@@ -9,7 +9,7 @@ import { location, locationKey, git, READ, sendToChat, focusChat, diffRows, diff
 import { layoutGraph } from "./graph.js";
 import { oneHunk, someLines, splitDiff, toCrlf } from "./patch.js";
 
-const MAX_FILES = 1000, MAX_LINES = 3000, NET = 120000, PREFETCH_LINES = 20000;
+const MAX_FILES = 1000, MAX_LINES = 3000, NET = 120000, PREFETCH_LINES = 20000, LOG_PAGE = 50;
 const CONFLICTS = "Conflicts: fix each U file (Ours / Theirs, or edit it and Mark resolved), then Commit. Abort undoes it.";
 // An operation that stopped half way, by the file git leaves for it.
 const IN_PROGRESS = [["merge", "MERGE_HEAD"], ["cherry-pick", "CHERRY_PICK_HEAD"], ["revert", "REVERT_HEAD"]];
@@ -35,7 +35,7 @@ function parseLog(out) {
 }
 
 // Graph drawing: lane width, row height, left padding (px).
-const LANE = 14, ROW = 28, PAD = 8, HALF = ROW / 2;
+const LANE = 14, ROW = 28, PAD = 8, HALF = ROW / 2, MAX_LANES = 12;
 const laneX = (k) => PAD + k * LANE + LANE / 2;
 
 // One half-row line: straight down, or a rounded bend between two lanes.
@@ -77,7 +77,7 @@ export default class Changes extends View {
     this.branchName = InputState.new({ placeholder: "New branch name" });
     this.branchName.on("submit", (_e, cx) => this.newBranch(cx));
     this.logSearch = InputState.new({ placeholder: "Search commits (message, hash, author, branch)" });
-    this.logSearch.on("change", (_e, cx) => { this.logQuery = this.logSearch.value().trim().toLowerCase(); cx.notify(); });
+    this.logSearch.on("change", (_e, cx) => { this.logQuery = this.logSearch.value().trim().toLowerCase(); this.logShown = LOG_PAGE; cx.notify(); });
     for (const [state, name] of [[this.message, "message"], [this.branchName, "branch"], [this.logSearch, "log"]]) {
       state.on("focus", (_e, cx) => { this.typing = name; cx.notify(); });
       state.on("blur", (_e, cx) => { this.typing = null; cx.notify(); });
@@ -563,7 +563,7 @@ export default class Changes extends View {
     if (!this.root) return;
     // The last history shows at once while it reloads.
     if (this.logRoot !== this.root) { this.log = null; this.logRoot = this.root; }
-    this.view = "log"; this.picked = null;
+    this.view = "log"; this.picked = null; this.logShown = LOG_PAGE;
     this.loadLog(cx);
   }
 
@@ -757,7 +757,8 @@ export default class Changes extends View {
     const q = this.logQuery;
     // A search shows the matching commits only, so their lines would join the wrong rows: no graph then.
     const rows = q ? this.log.filter((r) => [r.subject, r.hash, r.author, ...r.refs.local, ...r.refs.remote, ...r.refs.tags].some((s) => s.toLowerCase().includes(q))) : this.log;
-    const width = q ? 0 : PAD * 2 + LANE * Math.min(12, Math.max(1, ...this.log.map((r) => r.width)));
+    const width = q ? 0 : PAD * 2 + LANE * Math.min(MAX_LANES, Math.max(1, ...this.log.map((r) => r.width)));
+    const shown = (l) => Math.min(l[0], l[1]) < MAX_LANES; // lines further right are cut off: not built
     const picked = this.log.find((r) => r.hash === this.picked);
     const pill = (id, text, fg, bg, border) => div().id(id).flex_none().h(18).px(6).flex().items_center().rounded(9).text_size(11)
       .text_color(fg).bg(bg).when(Boolean(border), (e) => e.border_1().border_color(border)).child(text);
@@ -767,8 +768,8 @@ export default class Changes extends View {
         .when(this.picked === r.hash, (e) => e.bg(t.selected)).hover((s) => s.bg(t.hover))
         .on_click((e, cx) => { if (e.click_count > 1) this.showCommit(r.hash, cx); else { this.picked = r.hash; this.confirm = null; cx.notify(); } })
         .when(!q, (e) => e.child(div().relative().flex_none().w(width).h(ROW).overflow_hidden()
-          .children(r.top.map((l) => graphLine(l, "top", paint)))
-          .children(r.bottom.map((l) => graphLine(l, "bottom", paint)))
+          .children(r.top.filter(shown).map((l) => graphLine(l, "top", paint)))
+          .children(r.bottom.filter(shown).map((l) => graphLine(l, "bottom", paint)))
           .child(div().absolute().left(x - 5).top(HALF - 5).w(10).h(10).rounded(5).border_2().border_color(r.refs.head ? t.foreground : c).bg(merge ? t.background : c))))
         .when(Boolean(q), (e) => e.child(div().flex_none().pl(10).text_color(t.dim).font_family(settings().font_family ?? "JetBrains Mono").child(r.short)))
         .children(r.refs.local.map((b) => pill(`ref-${r.hash}-${b}`, b, b === this.branch ? t.background : c, b === this.branch ? c : c + "26")))
@@ -782,7 +783,11 @@ export default class Changes extends View {
       h_flex().flex_none().px(10).py(6).gap(5).items_center().flex_wrap().border_b(1).border_color(t.border).text_size(12)
         .children(picked ? [div().text_color(t.dim).font_family(settings().font_family ?? "JetBrains Mono").child(picked.short), ...this.logActions(picked, t)]
           : [div().text_color(t.dim).child(q ? `${rows.length} of the last 500 commits` : "Click a commit for its actions · double-click to see its changes")]),
-      v_flex().id("log").flex_1().min_h(0).overflow_y_scrollbar().text_size(12).children(rows.map(row)),
+      // A page at a time: every row and graph line is drawn again on each redraw of the window.
+      v_flex().id("log").flex_1().min_h(0).overflow_y_scrollbar().text_size(12).children(rows.slice(0, this.logShown).map(row))
+        .when(rows.length > this.logShown, (e) => e.child(h_flex().flex_none().p(8).justify_center()
+          .child(button("log-more", `Show ${Math.min(LOG_PAGE, rows.length - this.logShown)} more (${rows.length - this.logShown} left)`, t,
+            (_e, cx) => { this.logShown += LOG_PAGE; cx.notify(); })))),
     ];
   }
 

@@ -180,8 +180,8 @@ rm -rf "$APP/mods/my-files" "$APP/mods/my-changes" "$APP/layouts/my-herdr.json"
 - **History**: the graph of all branches, drawn like Fork: one color per line,
   curves where branches split and merge, branch labels (the current branch filled,
   remote branches outlined in the line's color, tags in yellow), a hollow dot for
-  merge commits. The search box filters the last 500 commits by message, hash,
-  author or branch. Click a commit for its actions: **View changes**, **Checkout**,
+  merge commits. It shows 50 commits at a time (**Show 50 more** at the bottom).
+  The search box filters the last 500 commits by message, hash, author or branch. Click a commit for its actions: **View changes**, **Checkout**,
   **Merge … into** and **Delete** for each branch on it (a branch with commits no
   other branch has asks again as **Force delete**), **Checkout commit** / **Merge**
   for a commit with no branch, **Cherry-pick onto** the current branch, **Revert**,
