@@ -116,8 +116,9 @@ export const actionsMethods = {
   async shell(action, a, b) {
     const [ps, sh] = {
       "new-folder": ["New-Item -ItemType Directory -Path $a | Out-Null", 'mkdir -- "$1"'],
-      // Move-Item onto an existing folder moves into it: refused, like the sh one.
-      rename: ["if (Test-Path -LiteralPath $b) { throw ($b + ' already exists') }; Move-Item -LiteralPath $a -Destination $b", '[ -e "$2" ] && { echo "$2 already exists" >&2; exit 1; }; mv -- "$1" "$2"'],
+      // Move-Item onto an existing folder moves into it: refused, like the sh one. -ne ignores
+      // case, so a case-only rename (the same file on Windows) still goes through.
+      rename: ["if ((Test-Path -LiteralPath $b) -and $a -ne $b) { throw ($b + ' already exists') }; Move-Item -LiteralPath $a -Destination $b", '[ -e "$2" ] && { echo "$2 already exists" >&2; exit 1; }; mv -- "$1" "$2"'],
       delete: ["Remove-Item -LiteralPath $a -Recurse -Force", 'rm -rf -- "$1"'],
     }[action];
     const r = window()?.platform === "windows"
