@@ -114,6 +114,16 @@ export const actionsMethods = {
     }, cx);
   },
 
+  // Throws out every unstaged change (edits and new files); what is staged stays. Asks twice.
+  discardAll(cx) {
+    if (!this.confirm?.all) { this.confirm = { all: true }; cx.notify(); return; }
+    this.act("Discard all", async () => {
+      await this.git(["restore", "--worktree", "--ignore-unmerged", "--", "."]);
+      await this.git(["clean", "-f", "-d", "-q"]); // untracked only, .gitignore'd files stay
+      return "Discarded all unstaged changes";
+    }, cx);
+  },
+
   resolve(f, side, cx) {
     this.act("Resolve", async () => {
       await this.git(["checkout", `--${side}`, "--", f.path]);

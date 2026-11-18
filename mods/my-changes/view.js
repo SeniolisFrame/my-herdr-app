@@ -31,7 +31,9 @@ export const viewMethods = {
       h_flex().flex_none().px(10).pt(6).pb(2).gap(6).items_center().text_size(11).text_color(t.dim)
         .child(div().flex_1().font_semibold().child(`${staged ? "Staged" : "Unstaged"} · ${items.length}`))
         .child(staged ? button("unstage-all", "Unstage all", t, (_e, cx) => this.unstageAll(cx), { enabled: !this.busy && items.length > 0 })
-          : button("stage-all", "Stage all", t, (_e, cx) => this.stageAll(cx), { enabled: !this.busy && items.length > 0 })),
+          : h_flex().gap(6)
+            .child(button("discard-all", this.confirm?.all ? "Discard all? click again" : "Discard all", t, (_e, cx) => this.discardAll(cx), { danger: true, enabled: !this.busy && items.length > 0 }))
+            .child(button("stage-all", "Stage all", t, (_e, cx) => this.stageAll(cx), { enabled: !this.busy && items.length > 0 }))),
       div().flex_none().h(Math.min(Math.max(items.length, 1) * 26 + 4, 160)).relative()
         .child(v_flex().id(`list-${side}`).absolute().inset_0().overflow_y_scroll().px(6).children(items.map((x) => this.fileRow(x, t)))
           .when(!items.length, (e) => e.child(div().px(6).py(4).text_size(12).text_color(t.dim).child(staged ? "Nothing staged" : "No changes"))))

@@ -54,7 +54,7 @@ export default class Changes extends View {
       "discard-hunk": () => this.discardHunk(Number(arg) || 0, cx), // twice
 
       line: () => { const [h, p] = arg.split(":").map(Number); this.pickLine({ hunk: h, pos: p }, cx); },
-      discard: () => f && this.discard(f, cx),
+      discard: () => f && this.discard(f, cx), "discard-all": () => this.discardAll(cx), // twice
       ours: () => f && this.resolve(f, "ours", cx), theirs: () => f && this.resolve(f, "theirs", cx),
       open: () => item && this.openInFiles(item.path),
       commit: () => { if (arg) this.message.set_value(arg); this.hasMessage = Boolean(this.message.value().trim()); this.commit(cx); },
