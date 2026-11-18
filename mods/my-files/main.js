@@ -2,29 +2,49 @@
 // search every file, see blame and history, and send @path to the chat.
 import { View, div, svg } from "gpui-kit";
 import { v_flex, h_flex, Editor, EditorState, InputState, Input } from "gpui-base";
-import { exec, readTextFile, writeTextFile, watchFolder, theme, settings, window, nextCommand } from "herdr";
+import { exec, readTextFile, writeTextFile, watchFolder, theme, settings, window, nextCommand, shared } from "herdr";
 import { location, locationKey, git, READ, sendToChat, focusChat, diffRows, diffRow, button, untab } from "./common.js";
-import { usesTabs, tabsToSpaces, spacesToTabs, replaceOnLines } from "./text.js";
+import { usesTabs, tabsToSpaces, spacesToTabs, replaceOnLines, replaceAll } from "./text.js";
 
 const LANG = { ts: "js", tsx: "js", mts: "js", cts: "js", jsx: "js", mjs: "js", toml: "yaml", jsonc: "json", svelte: "html", vue: "html" };
 const PER_FOLDER = 500, TOTAL = 5000, MAX_EDIT = 400000;
 
-async function directory(path, on) {
-  const windowsDirectory = async () => {
-    // Same listing as the shipped Files panel: UTF-8 output, links checked, curly quotes doubled.
-    const r = await exec("powershell", ["-NoProfile", "-Command", "[Console]::OutputEncoding = [System.Text.UTF8Encoding]::new($false); & { param($p) @(Get-ChildItem -LiteralPath $p -Force -ErrorAction Stop | Where-Object Name -ne '.git' | Select-Object -First 501 | ForEach-Object { @{ name=$_.Name; dir=($_.PSIsContainer -and (-not ($_.Attributes -band [IO.FileAttributes]::ReparsePoint) -or -not $_.LinkType -or ($_.Target -and [IO.Directory]::Exists(([IO.Path]::Combine([IO.Path]::GetDirectoryName($_.FullName), $_.Target[0])))))) } }) | ConvertTo-Json -Compress } '" + path.replace(/['‘’‚‛]/g, "$&$&") + "'"], { on });
-    if (r.code !== 0) throw new Error(r.stderr || "Cannot list this folder");
-    const result = JSON.parse(r.stdout || "[]");
-    return Array.isArray(result) ? result : [result];
-  };
-  if (!on && window()?.platform === "windows") return windowsDirectory();
-  const script = 'n=0; for p in "$1"/* "$1"/.[!.]* "$1"/..?*; do [ -e "$p" ] || [ -L "$p" ] || continue; name=${p##*/}; [ "$name" = .git ] && continue; if [ -d "$p" ]; then kind=d; else kind=f; fi; printf "%s\\0%s\\0" "$kind" "$name"; n=$((n+1)); [ "$n" -gt 500 ] && break; done; test -d "$1"';
-  let r;
-  try { r = await exec("sh", ["-c", script, "files", path], { on }); }
-  catch (e) {
-    if (on && String(e).includes("cannot start sh: program not found")) return windowsDirectory();
-    throw e;
+// PowerShell takes a 'single-quoted' string with its quote marks (curly ones too) doubled.
+const psQuote = (s) => "'" + s.replace(/['‘’‚‛]/g, "$&$&") + "'";
+
+// Same listing as the shipped Files panel (UTF-8 output, links checked), for several
+// folders in one PowerShell: starting it costs 0.3s to 2s here. `deep` lists each
+// folder's subfolders too (the first 40), so opening one of them shows at once.
+async function windowsDirectories(root, rels, on, deep) {
+  const script = "[Console]::OutputEncoding = [System.Text.UTF8Encoding]::new($false); & { param($root, $deep, [string[]]$rels) "
+    + "function L($p) { ,@(Get-ChildItem -LiteralPath $p -Force -ErrorAction Stop | Where-Object Name -ne '.git' | Select-Object -First 501 | ForEach-Object { @{ name=$_.Name; dir=($_.PSIsContainer -and (-not ($_.Attributes -band [IO.FileAttributes]::ReparsePoint) -or -not $_.LinkType -or ($_.Target -and [IO.Directory]::Exists(([IO.Path]::Combine([IO.Path]::GetDirectoryName($_.FullName), $_.Target[0])))))) } }) } "
+    + "$out = @{}; foreach ($r in $rels) { $full = if ($r) { Join-Path $root $r } else { $root }; "
+    + "try { $e = L $full; $out[$r] = $e } catch { $out[$r] = $null; continue }; "
+    + "if ($deep -eq 1) { foreach ($d in @($e | Where-Object { $_.dir } | Select-Object -First 40)) { $k = if ($r) { $r + '/' + $d.name } else { $d.name }; try { $out[$k] = L (Join-Path $full $d.name) } catch {} } } }; "
+    + "ConvertTo-Json -InputObject $out -Depth 4 -Compress } "
+    + `${psQuote(root)} ${deep ? 1 : 0} ${rels.map(psQuote).join(",")}`;
+  const r = await exec("powershell", ["-NoProfile", "-Command", script], { on });
+  if (r.code !== 0) throw new Error(r.stderr || "Cannot list this folder");
+  return new Map(Object.entries(JSON.parse(r.stdout || "{}")).map(([k, v]) => [k, v === null ? null : Array.isArray(v) ? v : [v]]));
+}
+
+// Folders under root, by path from root ("" is root) → their entries, or null when gone.
+async function directories(root, rels, on, deep) {
+  if (!on && window()?.platform === "windows") return windowsDirectories(root, rels, on, deep);
+  const out = new Map();
+  for (const rel of rels) {
+    try { out.set(rel, await directory(rel ? `${root}/${rel}` : root, on)); }
+    catch (e) {
+      if (on && String(e).includes("cannot start sh: program not found")) return windowsDirectories(root, rels, on, deep);
+      out.set(rel, null);
+    }
   }
+  return out;
+}
+
+async function directory(path, on) {
+  const script = 'n=0; for p in "$1"/* "$1"/.[!.]* "$1"/..?*; do [ -e "$p" ] || [ -L "$p" ] || continue; name=${p##*/}; [ "$name" = .git ] && continue; if [ -d "$p" ]; then kind=d; else kind=f; fi; printf "%s\\0%s\\0" "$kind" "$name"; n=$((n+1)); [ "$n" -gt 500 ] && break; done; test -d "$1"';
+  const r = await exec("sh", ["-c", script, "files", path], { on });
   if (r.code !== 0) throw new Error(r.stderr || "Cannot list this folder");
   const fields = r.stdout.split("\0"), out = [];
   for (let i = 0; i + 1 < fields.length; i += 2) out.push({ name: fields[i + 1], dir: fields[i] === "d" });
@@ -63,8 +83,17 @@ export default class Files extends View {
     this.find.on("submit", (_e, cx) => this.findNext(cx));
     this.find.on("focus", (_e, cx) => { this.typing = "find"; cx.notify(); });
     this.find.on("blur", (_e, cx) => { this.typing = null; cx.notify(); });
+    this.replaceIn = InputState.new({ placeholder: "Replace with" });
+    this.replaceIn.on("submit", (_e, cx) => this.replaceOne(cx));
+    this.nameInput = InputState.new({ placeholder: "Name" });
+    this.nameInput.on("submit", (_e, cx) => this.fileOp(this.nameAction, cx));
+    for (const [state, name] of [[this.replaceIn, "replace-in"], [this.nameInput, "name"]]) {
+      state.on("focus", (_e, cx) => { this.typing = name; cx.notify(); });
+      state.on("blur", (_e, cx) => { this.typing = null; cx.notify(); });
+    }
+    this.openRequest = shared("my-files.open")?.n; // an old request from Changes stays done
+    // No timer (each refresh starts PowerShell and git): the folder watch and Sync do it.
     this.refresh(cx);
-    cx.timer.every(10000, cx => this.refresh(cx));
     cx.spawn(async cx => { for (;;) { this.command(await nextCommand(), cx); cx.notify(); } });
   }
 
@@ -74,6 +103,8 @@ export default class Files extends View {
     const i = c.indexOf(":"), name = i < 0 ? c : c.slice(0, i), arg = i < 0 ? "" : c.slice(i + 1);
     const run = {
       focus: () => this.handle.focus(),
+      sync: () => this.refresh(cx),
+      toggle: () => arg && this.toggle(arg, cx), // open or close a folder
       open: () => { const m = /^(.*?)(?::(\d+))?$/.exec(arg); this.open(m[1], m[2] ? { line: +m[2] } : null, cx); },
       close: () => this.close(),
       save: () => this.save(cx),
@@ -84,6 +115,12 @@ export default class Files extends View {
       blame: () => this.file && this.showBlame(cx),
       history: () => this.file && this.showHistory(cx),
       send: () => (arg || this.file) && this.send(arg || this.file, cx),
+      "replace-in-file": () => { const [q, to] = arg.split("|"); this.find.set_value(q); this.replaceIn.set_value(to ?? ""); this.replaceEvery(cx); },
+      menu: () => this.openMenu(arg, cx),
+      "new-file": () => this.nameThen("new-file", arg, cx),
+      "new-folder": () => this.nameThen("new-folder", arg, cx),
+      rename: () => this.nameThen("rename", arg, cx),
+      delete: () => { this.menu && (this.menu.confirm = true); this.fileOp("delete", cx); },
     }[name];
     run?.();
   }
@@ -102,13 +139,24 @@ export default class Files extends View {
 
   current(context) { return this.context === context && locationKey() === context.key; }
 
-  async loadFolder(path, context) {
-    const { on, cwd: root } = context;
-    const entries = await directory(path ? `${root}/${path}` : root, on);
-    if (!this.current(context) || (path && !this.folders.has(path))) return;
-    const used = [...this.entries.entries()].filter(([p]) => p !== path).reduce((n, [, e]) => n + e.length, 0);
+  // Lists folders (with `deep`, their subfolders too) into this.entries; a listed folder that
+  // is gone closes. Closed folders keep their entries, so opening one again shows at once.
+  async loadFolders(paths, context, deep) {
+    const lists = await directories(context.cwd, paths, context.on, deep);
+    if (!this.current(context)) return;
+    for (const [path, entries] of lists) {
+      if (entries) { this.store(path, entries); continue; }
+      if (!path) throw new Error("Cannot list this folder");
+      for (const folder of [...this.folders]) if (folder === path || folder.startsWith(path + "/")) this.folders.delete(folder);
+      this.entries.delete(path);
+    }
+  }
+
+  store(path, entries) {
+    const shown = (p) => !p || this.folders.has(p);
+    const used = [...this.entries.entries()].filter(([p]) => p !== path && shown(p)).reduce((n, [, e]) => n + e.length, 0);
     this.entries.set(path, entries.slice(0, Math.max(0, Math.min(PER_FOLDER, TOTAL - used))).sort((a, b) => Number(b.dir) - Number(a.dir) || a.name.localeCompare(b.name)));
-    if (entries.length > PER_FOLDER || used + entries.length > TOTAL) this.limited = true;
+    if (shown(path) && (entries.length > PER_FOLDER || used + entries.length > TOTAL)) this.limited = true;
   }
 
   refresh(cx) {
@@ -119,45 +167,55 @@ export default class Files extends View {
       const saved = this.saved.get(next);
       this.context = { key: next, cwd, on }; this.root = cwd; this.on = on; this.entries = new Map(); this.folders = new Set(saved?.folders);
       this.pending = new Set(); this.marks = {}; this.close(); this.watched = null; this.error = null; this.limited = false;
-      this.loading = false; this.results = null; this.isRepo = false;
+      this.loading = false; this.results = null; this.isRepo = false; this.menu = null;
       if (saved?.file) this.open(saved.file, null, cx);
     }
-    if (!cwd || this.loading) return;
+    if (!cwd) return;
+    if (this.loading) { this.again = true; return; } // a change mid-refresh: once more after it
     const context = this.context;
-    this.loading = true;
+    this.loading = true; this.again = false;
     this.limited = false;
     cx.spawn(async cx => {
       try {
-        for (const path of ["", ...this.folders]) {
-          if (!this.current(context)) return;
-          await this.loadFolder(path, context);
-        }
-        const top = await exec("git", ["rev-parse", "--show-toplevel"], { cwd, on }).catch(() => null);
-        const marks = {};
-        if (top?.code === 0) {
+        // The folders and git's marks load side by side; the repo's top is asked once per location.
+        const marksOf = async () => {
+          if (!context.top) { // not a repo yet is asked again: a `git init` may come later
+            const top = await exec("git", ["rev-parse", "--show-toplevel"], { cwd, on }).catch(() => null);
+            context.top = top?.code === 0 ? top.stdout.trim() : null;
+          }
+          if (!context.top) return null;
           const status = await exec("git", [...READ, "status", "--porcelain=v1", "-z", "--no-renames", "--untracked-files=all"], { cwd, on }).catch(() => null);
+          const marks = {};
           if (status?.code === 0) for (const entry of status.stdout.split("\0").filter(Boolean).slice(0, TOTAL)) {
             const xy = entry.slice(0, 2);
-            marks[`${top.stdout.trim()}/${entry.slice(3)}`.toLowerCase()] = xy === "??" || xy.includes("A") ? "A" : xy.includes("U") ? "U" : xy.includes("D") ? "D" : "M";
+            marks[`${context.top}/${entry.slice(3)}`.toLowerCase()] = xy === "??" || xy.includes("A") ? "A" : xy.includes("U") ? "U" : xy.includes("D") ? "D" : "M";
           }
-        }
+          return marks;
+        };
+        // An open folder that is gone (deleted, renamed) just closes; only the top one is an error.
+        // The first listing of a folder also reads the top level's subfolders.
+        const [, marks] = await Promise.all([this.loadFolders(["", ...this.folders], context, !this.entries.size), marksOf(), this.reloadOpen(context)]);
         if (!this.current(context)) return;
-        this.isRepo = top?.code === 0; this.marks = marks; this.error = null; this.watch(cwd, cx);
+        this.isRepo = Boolean(context.top); this.marks = marks ?? {}; this.error = null; this.watch(cwd, cx);
       } catch (e) { if (this.current(context)) this.error = String(e); }
-      finally { if (this.context === context) this.loading = false; cx.notify(); }
+      finally {
+        if (this.context === context) { this.loading = false; if (this.again) this.refresh(cx); }
+        cx.notify();
+      }
     });
   }
 
   toggle(path, cx) {
     if (this.folders.has(path)) {
-      for (const folder of [...this.folders]) if (folder === path || folder.startsWith(path + "/")) { this.folders.delete(folder); this.entries.delete(folder); }
+      for (const folder of [...this.folders]) if (folder === path || folder.startsWith(path + "/")) this.folders.delete(folder);
     } else {
       this.folders.add(path);
-      if (!this.entries.has(path) && !this.pending.has(path)) {
+      // Shown at once when listed before; read again (with its subfolders) meanwhile.
+      if (!this.pending.has(path)) {
         const context = this.context;
         this.pending.add(path);
         cx.spawn(async cx => {
-          try { await this.loadFolder(path, context); }
+          try { await this.loadFolders([path], context, true); }
           catch (e) { if (this.current(context)) this.error = String(e); }
           finally { if (this.context === context) this.pending.delete(path); cx.notify(); }
         });
@@ -179,7 +237,13 @@ export default class Files extends View {
     this.rows = null; this.note = null; this.confirmClose = false;
   }
 
-  full(path) { return `${this.root}/${path}`; }
+  // Files under the tree's folder are kept relative; Changes may send a repo file
+  // outside it (the tree shows a subfolder of the repo), which stays absolute.
+  full(path) { return /^([A-Za-z]:)?[\\/]/.test(path) ? path : `${this.root}/${path}`; }
+  rel(path) {
+    const root = this.root.replace(/\\/g, "/").replace(/\/$/, ""), p = path.replace(/\\/g, "/");
+    return p.toLowerCase().startsWith(root.toLowerCase() + "/") ? p.slice(root.length + 1) : p;
+  }
 
   // pos: { line } (1-based); { line, word } also selects that word on the line.
   open(path, pos, cx) {
@@ -212,6 +276,22 @@ export default class Files extends View {
     });
   }
 
+  // The open file changed on disk (Changes discarded lines, the chat edited it): show the
+  // new text, cursor kept. Not over unsaved edits here: Save then says the file changed.
+  async reloadOpen(context) {
+    const path = this.file, code = this.code;
+    if (!code || this.readonly || this.dirty()) return;
+    const text = await readTextFile(this.full(path), { on: this.on });
+    if (this.file !== path || this.code !== code || !this.current(context) || this.dirty()) return;
+    if (text === null || text === this.disk || text.length > MAX_EDIT || text.includes("\0")) return;
+    const at = code.selected_range(), plain = text.replace(/\r\n/g, "\n");
+    this.disk = text; this.crlf = text.includes("\r\n"); this.tabs = usesTabs(plain);
+    code.set_value(this.tabs ? tabsToSpaces(plain) : plain);
+    this.shown = code.value(); this.wasDirty = false;
+    const n = this.shown.length;
+    code.set_selected_range({ start: Math.min(at.start, n), end: Math.min(at.end, n) });
+  }
+
   // Puts the cursor at the start of { line }, selecting { word } on it.
   goTo({ line, word }) {
     const text = this.code.value();
@@ -239,6 +319,24 @@ export default class Files extends View {
       } catch (e) { this.note = `Not saved: ${String(e).includes("stale") || String(e).includes("match") ? "the file changed on disk; close it without saving and open it again" : e}`; }
       cx.notify();
     });
+  }
+
+  // ctrl+h: Replace swaps the found text under the cursor and finds the next one;
+  // All swaps every one in the file (the file then needs saving).
+  replaceOne(cx) {
+    const q = this.find.value(), r = this.code?.selected_range();
+    if (!q || !r || this.readonly) return;
+    if (this.code.value().slice(r.start, r.end).toLowerCase() === q.toLowerCase()) this.code.replace(this.replaceIn.value());
+    this.findNext(cx);
+  }
+
+  replaceEvery(cx) {
+    const q = this.find.value();
+    if (!q || !this.code || this.readonly) return;
+    const { text, n } = replaceAll(this.code.value(), q, this.replaceIn.value());
+    if (n) this.code.set_value(text);
+    this.wasDirty = this.dirty(); this.note = n ? `Replaced ${n} in this file: save to keep it` : `“${q}” not found`;
+    cx.notify();
   }
 
   findNext(cx) {
@@ -344,15 +442,95 @@ export default class Files extends View {
     });
   }
 
+  // --- file actions (right-click a row, or + for the folder itself) -------------------
+
+  // menu: { path, dir } of that row ("" = the tree's folder); confirm: Delete was clicked once.
+  openMenu(path, cx) {
+    const i = path.lastIndexOf("/"), entry = (this.entries.get(i < 0 ? "" : path.slice(0, i)) ?? []).find((e) => e.name === path.slice(i + 1));
+    this.menu = this.menu?.path === path ? null : { path, dir: path === "" || Boolean(entry?.dir) };
+    this.nameAction = null;
+    cx.notify();
+  }
+
+  // New file / New folder / Rename ask for a name first (a command can pass it).
+  nameThen(action, name, cx) {
+    if (!this.menu) return;
+    if (name) { this.nameInput.set_value(name); return this.fileOp(action, cx); }
+    this.nameAction = action;
+    this.nameInput.set_value(action === "rename" ? this.menu.path.split("/").pop() : "");
+    this.nameInput.focus();
+    cx.notify();
+  }
+
+  fileOp(action, cx) {
+    const m = this.menu;
+    if (!m || !action || (m.path === "" && (action === "rename" || action === "delete"))) return;
+    if (this.on) { this.note = "File actions work on this computer only"; cx.notify(); return; }
+    if (action === "delete" && !m.confirm) { m.confirm = true; cx.notify(); return; }
+    const name = this.nameInput.value().trim();
+    if (action !== "delete" && (!name || /[\\/]/.test(name) || name === "." || name === "..")) { this.note = "Type a name (without / or \\)"; cx.notify(); return; }
+    const parentOf = (p) => p.replace(/\/?[^/]*$/, ""), join = (dir, n) => (dir ? `${dir}/${n}` : n);
+    const where = action === "rename" || action === "delete" ? parentOf(m.path) : m.dir ? m.path : parentOf(m.path);
+    const target = action === "delete" ? m.path : join(where, name);
+    this.menu = null; this.nameAction = null;
+    cx.spawn(async (cx) => {
+      try {
+        if (action === "new-file") await writeTextFile(this.full(target), "", null);
+        else await this.shell(action, this.full(action === "new-folder" ? target : m.path), this.full(target));
+        if (where) this.folders.add(where); // show where it went
+        if (this.file && (action === "delete" || action === "rename") && (this.file === m.path || this.file.startsWith(m.path + "/"))) this.close();
+        this.note = { "new-file": `Created ${target}`, "new-folder": `Created ${target}/`, rename: `Renamed to ${target}`, delete: `Deleted ${m.path}` }[action];
+        this.refresh(cx);
+        if (action === "new-file") this.open(target, null, cx);
+      } catch (e) { this.note = `Not done: ${e.message ?? e}`; }
+      cx.notify();
+    });
+    cx.notify();
+  }
+
+  // mkdir, move (never over an existing file) and delete: PowerShell on Windows, else sh.
+  async shell(action, a, b) {
+    const q = (s) => "'" + s.replace(/['‘’‚‛]/g, "$&$&") + "'";
+    const [ps, sh] = {
+      "new-folder": ["New-Item -ItemType Directory -Path $a | Out-Null", 'mkdir -- "$1"'],
+      rename: ["Move-Item -LiteralPath $a -Destination $b", '[ -e "$2" ] && { echo "$2 already exists" >&2; exit 1; }; mv -- "$1" "$2"'],
+      delete: ["Remove-Item -LiteralPath $a -Recurse -Force", 'rm -rf -- "$1"'],
+    }[action];
+    const r = window()?.platform === "windows"
+      ? await exec("powershell", ["-NoProfile", "-Command", `& { param($a, $b) $ErrorActionPreference = 'Stop'; ${ps} } ${q(a)} ${q(b)}`])
+      : await exec("sh", ["-c", sh, "files", a, b]);
+    if (r.code !== 0) throw new Error((r.stderr || r.stdout).trim().split(/\r?\n/)[0] || `${action} failed`);
+  }
+
+  menuRow(depth, t) {
+    const m = this.menu, isRoot = m.path === "";
+    return h_flex().id("file-menu").flex_none().pl(8 + depth * 16).pr(8).py(4).gap(4).items_center().flex_wrap().rounded(6).bg(t.raised)
+      .children(this.nameAction ? [
+        this.input("file-name", this.nameInput, this.typing === "name", t),
+        button("file-name-ok", { "new-file": "Create file", "new-folder": "Create folder", rename: "Rename" }[this.nameAction], t, (_e, cx) => this.fileOp(this.nameAction, cx), { primary: true }),
+        button("file-name-cancel", "Cancel", t, (_e, cx) => { this.nameAction = null; cx.notify(); }),
+      ] : [
+        ...(isRoot ? [] : [button("file-send", "@ chat", t, (_e, cx) => { this.menu = null; this.send(m.path, cx); })]),
+        button("file-new", "New file", t, (_e, cx) => this.nameThen("new-file", "", cx)),
+        button("file-new-dir", "New folder", t, (_e, cx) => this.nameThen("new-folder", "", cx)),
+        ...(isRoot ? [] : [
+          button("file-rename", "Rename", t, (_e, cx) => this.nameThen("rename", "", cx)),
+          button("file-delete", m.confirm ? "Delete? click again" : "Delete", t, (_e, cx) => this.fileOp("delete", cx), { danger: true }),
+        ]),
+      ]);
+  }
+
   // --- keys ----------------------------------------------------------------------
 
   key(e, cx) {
     const k = e.key, ctrl = e.modifiers.control || e.modifiers.platform;
     if (ctrl && k === "s") { this.save(cx); cx.stop_propagation(); return; }
     if (ctrl && k === "f" && this.code) { this.find.focus(); cx.stop_propagation(); return; }
+    if (ctrl && k === "h" && this.code && !this.readonly) { this.showReplace = true; this.replaceIn.focus(); cx.stop_propagation(); cx.notify(); return; }
     if (k === "escape") {
       cx.stop_propagation();
       if (this.typing) { this.typing = null; this.handle.focus(); }
+      else if (this.menu) { this.menu = null; this.nameAction = null; }
       else if (this.mode !== "edit") this.mode = "edit";
       else focusChat();
       cx.notify();
@@ -375,11 +553,12 @@ export default class Files extends View {
       out.push(h_flex().id(`file-${path}`).h(26).flex_none().pl(8 + depth * 16).pr(8).gap(7).items_center().rounded(6).cursor_pointer().hover(s => s.bg(t.hover))
         .drag_paths([`${this.root}/${path}`], { on: this.on })
         .on_click((_e, cx) => { if (entry.dir) this.toggle(path, cx); else this.open(path, null, cx); })
-        .on_mouse_down("right", (_e, cx) => { cx.stop_propagation(); this.send(path, cx); })
+        .on_mouse_down("right", (_e, cx) => { cx.stop_propagation(); this.openMenu(path, cx); })
         .child(entry.dir ? svg(`mods/files/chevron-${open ? "down" : "right"}.svg`).size(12).flex_none().text_color(t.dim) : div().w(12).flex_none())
         .child(svg(`mods/files/${entry.dir ? "folder" : "file"}.svg`).size(14).flex_none().text_color(t.muted))
         .child(div().flex_1().min_w(0).truncate().child(entry.name))
         .when(Boolean(mark), el => el.child(div().text_size(11).text_color(mark === "A" ? t.ansi2 : mark === "D" || mark === "U" ? t.ansi1 : t.blocked).child(mark))));
+      if (this.menu?.path === path) out.push(this.menuRow(depth, t));
       if (entry.dir && open) this.treeRows(path, depth + 1, out, t);
     }
     return out;
@@ -424,6 +603,13 @@ export default class Files extends View {
 
   render(cx) {
     if (locationKey() !== this.context?.key) this.refresh(cx);
+    // Changes asked to open a file (its Open button, a double-click there).
+    const asked = shared("my-files.open");
+    if (asked?.n && asked.n !== this.openRequest && this.root) {
+      this.openRequest = asked.n;
+      if (this.dirty()) this.note = "Save or close the open file first";
+      else this.open(this.rel(asked.path), null, cx);
+    }
     const t = theme(), file = this.file, dirty = this.dirty();
     const header = h_flex().h(42).flex_none().px(12).gap(6).items_center().border_b(1).border_color(t.border)
       .when(Boolean(file), el => el.child(button("files-back", "←", t, (_e, cx) => {
@@ -433,13 +619,23 @@ export default class Files extends View {
       })))
       .child(div().font_semibold().child("Files"))
       .child(div().flex_1().min_w(0).truncate().text_right().text_size(12).text_color(dirty ? t.blocked : t.dim)
-        .child(file ? `${file}${dirty ? " ●" : ""}` : this.root?.split(/[\\/]/).pop() ?? ""));
-    const fileBar = file && h_flex().flex_none().px(10).py(6).gap(6).items_center().border_b(1).border_color(t.border)
-      .child(this.input("files-find", this.find, this.typing === "find", t))
-      .when(this.isRepo, el => el.child(button("files-blame", "Blame", t, (_e, cx) => this.showBlame(cx), { active: this.mode === "blame" }))
-        .child(button("files-history", "History", t, (_e, cx) => this.showHistory(cx), { active: this.mode === "history" || this.mode === "commit" })))
-      .child(button("files-send", "@ chat", t, (_e, cx) => this.send(file, cx)))
-      .when(!this.readonly && Boolean(this.code), el => el.child(button("files-save", "Save", t, (_e, cx) => this.save(cx), { primary: true, enabled: dirty })));
+        .child(file ? `${file}${dirty ? " ●" : ""}` : this.root?.split(/[\\/]/).pop() ?? ""))
+      .when(!file && Boolean(this.root), el => el.child(button("files-sync", "Sync", t, (_e, cx) => this.refresh(cx), { enabled: !this.loading }))
+        .child(button("files-new", "+", t, (_e, cx) => this.openMenu("", cx), { active: this.menu?.path === "" })));
+    // Buttons wrap and the find box gets a row of its own, so a narrow panel still fits.
+    const fileBar = file && v_flex().flex_none().px(10).py(6).gap(6).when(!this.showReplace, el => el.border_b(1).border_color(t.border))
+      .child(h_flex().gap(6).items_center().flex_wrap()
+        .when(this.isRepo, el => el.child(button("files-blame", "Blame", t, (_e, cx) => this.showBlame(cx), { active: this.mode === "blame" }))
+          .child(button("files-history", "History", t, (_e, cx) => this.showHistory(cx), { active: this.mode === "history" || this.mode === "commit" })))
+        .child(button("files-send", "@ chat", t, (_e, cx) => this.send(file, cx)))
+        .when(!this.readonly && Boolean(this.code), el => el.child(button("files-replace-toggle", "Replace", t, (_e, cx) => { this.showReplace = !this.showReplace; cx.notify(); }, { active: this.showReplace }))
+          .child(button("files-save", "Save", t, (_e, cx) => this.save(cx), { primary: true, enabled: dirty }))))
+      .child(h_flex().child(this.input("files-find", this.find, this.typing === "find", t)));
+    const replaceInBar = file && this.showReplace && !this.readonly && Boolean(this.code) && h_flex().flex_none().px(10).pb(6).gap(6).items_center().border_b(1).border_color(t.border)
+      .child(this.input("files-replace-in", this.replaceIn, this.typing === "replace-in", t))
+      .child(button("files-replace-one", "Next", t, (_e, cx) => this.replaceOne(cx)))
+      .child(button("files-replace-every", "All", t, (_e, cx) => this.replaceEvery(cx)))
+      .child(button("files-replace-close", "×", t, (_e, cx) => { this.showReplace = false; cx.notify(); }));
     const confirm = this.confirmClose && dirty && h_flex().flex_none().px(10).py(6).gap(6).items_center().bg(t.raised)
       .child(div().flex_1().text_size(12).child("Unsaved changes."))
       .child(button("files-save-close", "Save", t, (_e, cx) => { this.save(cx); this.confirmClose = false; }, { primary: true }))
@@ -458,7 +654,8 @@ export default class Files extends View {
       .child(this.input("files-replace", this.replaceWith, this.typing === "replace", t))
       .child(button("files-replace-all", this.replacing ? "Replacing…" : `Replace all (${new Set(this.results.rows.map((r) => r.path)).size} files)`, t,
         (_e, cx) => this.replaceHits(this.results.rows, cx), { primary: true, enabled: !this.replacing }));
-    const tree = v_flex().id("files-tree").flex_1().min_h(0).overflow_y_scrollbar().p(6).children(this.treeRows("", 0, [], t))
+    const tree = v_flex().id("files-tree").flex_1().min_h(0).overflow_y_scrollbar().p(6)
+      .when(this.menu?.path === "", el => el.child(this.menuRow(0, t))).children(this.treeRows("", 0, [], t))
       .when(Boolean(this.error) || !this.entries.get("")?.length, el => el.child(div().p(8).text_size(12).text_color(t.dim).child(this.error || (this.loading ? "Loading files…" : this.root ? "No files" : "No folder"))))
       .when(this.limited, el => el.child(div().p(8).text_size(11).text_color(t.dim).child("File list limited to 500 entries per folder and 5,000 total")));
     return v_flex().id("my-files").size_full().min_h(0).rounded(10).overflow_hidden().bg(t.background).border_1().border_color(t.border).text_color(t.foreground).text_size(13)
@@ -467,10 +664,11 @@ export default class Files extends View {
       .when(!file, el => el.child(h_flex().flex_none().px(10).py(6).when(!replaceBar, e => e.border_b(1).border_color(t.border)).child(this.input("files-search", this.search, this.typing === "search", t))))
       .when(!file && Boolean(replaceBar), el => el.child(replaceBar))
       .when(Boolean(fileBar), el => el.child(fileBar))
+      .when(Boolean(replaceInBar), el => el.child(replaceInBar))
       .when(Boolean(confirm), el => el.child(confirm))
-      .when(Boolean(this.note), el => el.child(div().px(12).py(4).text_size(11).text_color(this.note === "Saved" || this.note.startsWith("Replaced") ? t.ansi2 : this.note.endsWith("…") ? t.dim : t.ansi1).child(this.note)))
+      .when(Boolean(this.note), el => el.child(div().px(12).py(4).text_size(11).text_color(/^(Saved|Replaced|Created|Renamed|Deleted)/.test(this.note) ? t.ansi2 : this.note.endsWith("…") ? t.dim : t.ansi1).child(this.note)))
       .child(file ? this.fileBody(t) : results || tree)
       .child(div().flex_none().px(12).py(4).border_t(1).border_color(t.border).text_size(11).text_color(t.dim).truncate()
-        .child(file ? "ctrl+s save · ctrl+f find · esc chat" : "click: open · right-click or drag: @path to chat · / search · esc: chat"));
+        .child(file ? "ctrl+s save · ctrl+f find · ctrl+h replace · esc chat" : "click: open · right-click: @chat, new, rename, delete · drag: path to a terminal · / search"));
   }
 }

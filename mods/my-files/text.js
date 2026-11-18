@@ -7,11 +7,20 @@ export const usesTabs = (text) => /^\t/m.test(text) && !/^ /m.test(text);
 export const tabsToSpaces = (text) => text.replace(/^\t+/gm, (m) => "    ".repeat(m.length));
 export const spacesToTabs = (text) => text.replace(/^( {4})+/gm, (m) => "\t".repeat(m.length / 4));
 
-// Replaces q (any case, literally) with `to` on the given 1-based lines only; line
-// endings stay as they are. Returns the new text and how many were replaced.
+// q found literally, in any case.
+const literal = (q) => new RegExp(q.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"), "gi");
+
+// Replaces q with `to` on the given 1-based lines only; line endings stay as they
+// are. Returns the new text and how many were replaced.
 export function replaceOnLines(text, lines, q, to) {
-  const re = new RegExp(q.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"), "gi"), parts = text.split(/(?<=\n)/);
+  const re = literal(q), parts = text.split(/(?<=\n)/);
   let n = 0;
   for (const l of lines) if (parts[l - 1]) parts[l - 1] = parts[l - 1].replace(re, () => { n++; return to; });
   return { text: parts.join(""), n };
+}
+
+// Replaces every q in the text (ctrl+h, Replace all).
+export function replaceAll(text, q, to) {
+  let n = 0;
+  return { text: text.replace(literal(q), () => { n++; return to; }), n };
 }

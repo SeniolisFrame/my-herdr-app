@@ -11,7 +11,9 @@ export function location() {
   const on = f?.pane === null ? (f.terminal?.includes("/") ? f.terminal.split("/")[0] : null) : space?.machine ?? null;
   return { cwd: pane?.cwd || f?.cwd || space?.folder, on };
 }
-export const locationKey = () => JSON.stringify(location());
+// Each workspace keeps its own state (open file, open folders) even when two are in the
+// same folder: a PowerShell cd isn't reported, so most sit in the home folder.
+export const locationKey = () => JSON.stringify({ ...location(), space: spaces().find(s => s.active)?.id ?? null });
 
 // git that throws with git's own message; READ writes nothing under .git, so the
 // folder watch doesn't wake itself up.
@@ -50,30 +52,36 @@ export function focusChat() {
 // Text draws a tab as nothing: pad each to the next 4-column stop.
 export const untab = (text) => text.replace(/[^\t]*\t/g, (s) => s.slice(0, -1).padEnd((s.length - 1) - (s.length - 1) % 4 + 4));
 
-// Numbers each diff line; `hunk` is the hunk's index within its file.
+// Numbers each diff line; `hunk` is the hunk's index within its file and `pos` a
+// line's place in that hunk's body (what patch.js someLines counts).
 export function diffRows(lines) {
-  let old = 0, next = 0, hunk = -1, inHunk = false;
+  let old = 0, next = 0, hunk = -1, pos = -1, inHunk = false;
   return lines.map((line) => {
     if (line.startsWith("diff --git ")) { hunk = -1; inHunk = false; return { kind: "file", text: line.replace(/^diff --git a\/(.*) b\/.*$/, "$1") }; }
     const match = /^@@ -(\d+)(?:,\d+)? \+(\d+)/.exec(line);
-    if (match) { old = +match[1]; next = +match[2]; hunk++; inHunk = true; return { kind: "@", hunk, text: line }; }
+    if (match) { old = +match[1]; next = +match[2]; hunk++; pos = -1; inHunk = true; return { kind: "@", hunk, text: line }; }
     const kind = line[0];
     if (!inHunk) return { kind: "", text: line };
-    if (kind === "-") return { kind, number: old++, text: untab(line.slice(1)) || " " };
-    if (kind === "+") return { kind, number: next++, text: untab(line.slice(1)) || " " };
-    if (kind === " ") { old++; return { kind, number: next++, text: untab(line.slice(1)) || " " }; }
+    if (kind === "-") return { kind, hunk, pos: ++pos, number: old++, text: untab(line.slice(1)) || " " };
+    if (kind === "+") return { kind, hunk, pos: ++pos, number: next++, text: untab(line.slice(1)) || " " };
+    if (kind === " ") { old++; return { kind, hunk, pos: ++pos, number: next++, text: untab(line.slice(1)) || " " }; }
     return { kind: "", text: line };
   });
 }
 
-// One diff row, 20px high; `hunkButton(row)` adds a control on hunk headers.
-export function diffRow(row, t, hunkButton) {
+// One diff row, 20px high. opts.hunkButton(row) adds controls on hunk headers;
+// opts.onPick(row, cx) makes "+"/"-" lines clickable, opts.picked(row) marks them.
+export function diffRow(row, t, opts = {}) {
   const { kind, number, text } = row;
   if (kind === "file") return div().w_full().px(12).h(20).flex_none().truncate().bg(t.selected).font_semibold().child(text);
   if (kind === "@") return h_flex().w_full().h(20).flex_none().px(12).gap(8).items_center().bg(t.raised).text_color(t.dim)
-    .when(Boolean(hunkButton), e => e.child(hunkButton(row))).child(div().flex_1().min_w(0).truncate().child(text));
-  return h_flex().w_full().h(20).flex_none().gap(10).when(kind === "+", (e) => e.bg(t.ansi2 + "22")).when(kind === "-", (e) => e.bg(t.ansi1 + "22"))
-    .child(div().w(36).flex_none().text_right().text_color(t.dim).child(number === undefined ? "" : String(number)))
+    .when(Boolean(opts.hunkButton), e => e.child(opts.hunkButton(row))).child(div().flex_1().min_w(0).truncate().child(text));
+  const pickable = Boolean(opts.onPick) && (kind === "+" || kind === "-"), picked = pickable && opts.picked?.(row);
+  // An id only on clickable lines: a commit's diff repeats hunk numbers per file.
+  return h_flex().w_full().h(20).flex_none().gap(10)
+    .when(kind === "+", (e) => e.bg(t.ansi2 + (picked ? "66" : "22"))).when(kind === "-", (e) => e.bg(t.ansi1 + (picked ? "66" : "22")))
+    .when(pickable, (e) => e.id(`row-${row.hunk}-${row.pos}`).cursor_pointer().on_click((_e, cx) => opts.onPick(row, cx)))
+    .child(div().w(36).flex_none().text_right().text_color(picked ? t.foreground : t.dim).child(picked ? "✓" : number === undefined ? "" : String(number)))
     .child(div().flex_1().min_w(0).truncate().text_color(kind === "" ? t.dim : t.foreground).child(text));
 }
 
