@@ -99,8 +99,9 @@ export const viewMethods = {
       .hover((s) => s.bg(t.hover)).cursor_pointer().on_click((_e, cx) => name !== this.branch && this.checkout(name, isRemote, cx))
       .child(div().flex_1().min_w(0).truncate().text_color(name === this.branch ? t.accent : t.foreground).child(`${name === this.branch ? "● " : ""}${name}`))
       // Merge only after a right-click on the row, never one click from a checkout.
-      .on_mouse_down("right", (_e, cx) => { this.mergeFor = this.mergeFor === name ? null : name; cx.notify(); })
-      .when(name !== this.branch && this.mergeFor === name, (e) => e.child(button(`merge-${name}`, "Merge into current", t, (_e, cx) => this.merge(name, cx))));
+      .on_mouse_down("right", (_e, cx) => { this.mergeFor = name; cx.notify(); })
+      .when(name !== this.branch && this.mergeFor === name, (e) => e.child(button(`merge-${name}`, "Merge into current", t, (_e, cx) => this.merge(name, cx))
+        .on_mouse_down_out((_e, cx) => { this.mergeFor = null; cx.notify(); }))); // a press anywhere else hides it
     return v_flex().id("branch-menu").flex_1().min_h(0).overflow_y_scrollbar().p(6).gap(2)
       .child(h_flex().gap(6).pb(4).child(textInput("branch-input", this.branchName, this.typing === "branch", t))
         .child(button("branch-create", "Create", t, (_e, cx) => this.newBranch(cx), { primary: true })))

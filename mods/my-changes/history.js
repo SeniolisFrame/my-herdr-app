@@ -156,7 +156,9 @@ export const historyMethods = {
       v_flex().id("log").flex_1().min_h(0).overflow_y_scrollbar().text_size(12)
         .children(rows.slice(0, this.logShown).flatMap((r) => r.hash === this.riskyFor && picked?.hash === r.hash
           ? [row(r), v_flex().id("log-menu").flex_none().mx(6).px(8).py(4).gap(2).items_start().rounded(6).bg(t.raised)
-            .on_mouse_down("left", (_e, cx) => cx.stop_propagation()).children(this.logActions(r, t))]
+            .on_mouse_down("left", (_e, cx) => cx.stop_propagation())
+            // A press anywhere else closes it; a right-click on a row then opens that row's menu.
+            .on_mouse_down_out((_e, cx) => { this.riskyFor = null; this.confirm = null; cx.notify(); }).children(this.logActions(r, t))]
           : [row(r)]))
         .when(rows.length > this.logShown, (e) => e.child(h_flex().flex_none().p(8).justify_center()
           .child(button("log-more", `Show ${Math.min(LOG_PAGE, rows.length - this.logShown)} more (${rows.length - this.logShown} left)`, t,
