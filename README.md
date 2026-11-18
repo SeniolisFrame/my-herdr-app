@@ -17,19 +17,102 @@ in a real editor.
 
 ## Install
 
-You need herdr-app (0.1.16 or newer) and git. On Windows:
+### What you need
 
-```
+- **herdr-app 0.1.16 or newer**, started at least once (that creates
+  `~/.config/herdr-app`), with `herdr-app` on your PATH: `herdr-app --version`
+  should answer in a terminal.
+- **git** on your PATH: `git --version`.
+- For Pull and Push: credentials that work without a prompt (Git Credential
+  Manager, which comes with Git for Windows, or an ssh key in ssh-agent). Try a
+  `git pull` in a terminal once; if that asks nothing, the panel works too.
+
+### Windows
+
+In PowerShell, with herdr-app running:
+
+```powershell
 git clone https://github.com/SeniolisFrame/my-herdr-app
 cd my-herdr-app
 powershell -ExecutionPolicy Bypass -File install.ps1
 ```
 
+It prints `Installed.` and the window switches to the my-herdr layout: Files on
+the left, your terminal in the middle, Changes on the right.
+
 `install.ps1` copies `mods/my-files` and `mods/my-changes` into
-`~/.config/herdr-app/mods`, copies `layouts/my-herdr.json`, checks both mods and
-switches to the layout. Your own layouts stay as they were: `ctrl+shift+L` cycles
-layouts. Run `install.ps1` again after a pull or an edit (herdr-app reloads the
-copied files at once). `uninstall.ps1` removes everything and goes back to `main`.
+`~/.config/herdr-app/mods` (test files left out), checks both mods with
+`herdr-app check`, copies `layouts/my-herdr.json` into `~/.config/herdr-app/layouts`
+and switches to it. If herdr-app keeps its files elsewhere, set `HERDR_APP_HOME`
+to that folder first.
+
+### macOS and Linux
+
+`install.ps1` is for Windows. Copy the same files by hand:
+
+```sh
+git clone https://github.com/SeniolisFrame/my-herdr-app
+cd my-herdr-app
+APP="${HERDR_APP_HOME:-$HOME/.config/herdr-app}"
+for m in my-files my-changes; do
+  mkdir -p "$APP/mods/$m"
+  cp mods/$m/*.js mods/$m/mod.json "$APP/mods/$m/"   # not the *.test.mjs files
+  herdr-app check "$APP/mods/$m"     # must say: check passed
+done
+cp layouts/my-herdr.json "$APP/layouts/"
+herdr-app do layout.switch --name my-herdr
+```
+
+### Your own setup stays
+
+Your layouts, keys and settings are not changed. `ctrl+shift+L` cycles layouts, so
+you can go back to herdr's `main` and return. If the window ever looks broken,
+`ctrl+alt+shift+escape` always goes back to the default layout.
+
+### Update
+
+```sh
+cd my-herdr-app
+git pull
+powershell -ExecutionPolicy Bypass -File install.ps1   # macOS/Linux: the copy steps above
+```
+
+herdr-app reloads the copied files at once; no restart. It doesn't see edits made
+in the repo until you install again (it watches its own folder, not links).
+
+### Uninstall
+
+On Windows, this removes both mods and the layout and switches back to `main`
+(the repo folder stays):
+
+```powershell
+powershell -ExecutionPolicy Bypass -File uninstall.ps1
+```
+
+On macOS and Linux:
+
+```sh
+APP="${HERDR_APP_HOME:-$HOME/.config/herdr-app}"
+herdr-app do layout.switch --name main
+rm -rf "$APP/mods/my-files" "$APP/mods/my-changes" "$APP/layouts/my-herdr.json"
+```
+
+### If something goes wrong
+
+- **`herdr-app folder not found`**: start herdr-app once, then run it again.
+- **`herdr-app` is not recognized**: herdr-app isn't on PATH; add its folder to
+  PATH, or open a new terminal after installing it.
+- **`check failed: my-files` (or my-changes)**: the output under it says why. Most
+  often herdr-app is older than 0.1.16: update it.
+- **running scripts is disabled**: use the `powershell -ExecutionPolicy Bypass
+  -File ...` line as written, not `.\install.ps1`.
+- **The panels show your home folder, not the project**: they follow the focused
+  terminal's folder (a `cd` there moves them at once). An agent started in your
+  home folder (`claude` run in `~`) stays there whatever it does inside, so `cd`
+  into the project before starting it, or start the workspace in the project folder.
+- **Changes says "Not a git repository"**: the folder isn't inside a git repo.
+- **Pull/Push fails asking for a password**: set up Git Credential Manager or an
+  ssh key (see What you need).
 
 ## Use
 
