@@ -217,7 +217,7 @@ export default class Changes extends View {
 
   // A refresh that finds the same diff keeps the lines chosen in it.
   setLines(lines, raw) {
-    if (!raw || raw !== this.raw) this.chosen = new Set();
+    if (!raw || raw !== this.raw) { this.chosen = new Set(); this.hunkMenu = null; }
     this.raw = raw;
     this.rows = diffRows(lines.slice(0, MAX_LINES).map((l) => l.length > 4000 ? l.slice(0, 4000) + "… (line truncated)" : l));
   }
@@ -249,7 +249,7 @@ export default class Changes extends View {
     if (k === "escape") {
       cx.stop_propagation();
       if (this.typing) { this.typing = null; this.handle.focus(); }
-      else if (this.menu || this.confirm || this.riskyFor || this.mergeFor) { this.menu = null; this.confirm = null; this.riskyFor = null; this.mergeFor = null; }
+      else if (this.menu || this.confirm || this.riskyFor || this.mergeFor || this.hunkMenu) { this.menu = null; this.confirm = null; this.riskyFor = null; this.mergeFor = null; this.hunkMenu = null; }
       else if (this.view === "commit") this.view = "log";
       else if (this.view === "log") this.view = "changes";
       else focusChat();

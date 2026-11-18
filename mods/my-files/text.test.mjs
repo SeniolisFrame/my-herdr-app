@@ -1,6 +1,12 @@
 // node mods/my-files/text.test.mjs
 import assert from "node:assert/strict";
-import { usesTabs, tabsToSpaces, spacesToTabs, replaceOnLines, replaceAll } from "./text.js";
+import { usesTabs, tabsToSpaces, spacesToTabs, replaceOnLines, replaceAll, snippet } from "./text.js";
+
+// Send to chat: line numbers of the selection, a trailing newline doesn't add a line.
+const src = "a\nbb\ncc\ndd\n";
+assert.equal(snippet("x/y.js", src, 2, 8), "x/y.js:2-3\n```js\nbb\ncc\n```\n"); // "bb\ncc\n": ends at line 4's start
+assert.equal(snippet("y.js", src, 3, 4), "y.js:2\n```js\nb\n```\n");
+assert.equal(snippet("Makefile", "```\n", 0, 3), "Makefile:1\n````\n```\n````\n");
 
 // Tabs round-trip, alignment spaces inside a line stay.
 const go = "func f() {\n\tif x {\n\t\ty := 1  // a\n\t}\n}\n";

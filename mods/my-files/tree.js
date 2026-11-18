@@ -1,5 +1,6 @@
-// Files: listing folders (several in one PowerShell on Windows) and the refresh.
-import { exec, window } from "herdr";
+// Files: listing folders (in-process here; sh or PowerShell on another machine) and the refresh.
+import { exec } from "herdr";
+import { readdir } from "fs/promises";
 import { location, locationKey, READ, watchWhile } from "./common.js";
 
 export const PER_FOLDER = 500, TOTAL = 5000;
@@ -7,9 +8,8 @@ export const PER_FOLDER = 500, TOTAL = 5000;
 // PowerShell takes a 'single-quoted' string with its quote marks (curly ones too) doubled.
 export const psQuote = (s) => "'" + s.replace(/['‘’‚‛]/g, "$&$&") + "'";
 
-// Same listing as the shipped Files panel (UTF-8 output, links checked), for several
-// folders in one PowerShell: starting it costs 0.3s to 2s here. `deep` lists each
-// folder's subfolders too (the first 40), so opening one of them shows at once.
+// A Windows machine without sh (another machine: readdir is local only): several folders
+// in one PowerShell (UTF-8 output, links checked), as starting it costs 0.3s to 2s.
 export async function windowsDirectories(root, rels, on, deep) {
   const script = "[Console]::OutputEncoding = [System.Text.UTF8Encoding]::new($false); & { param($root, $deep, [string[]]$rels) "
     + "function L($p) { ,@(Get-ChildItem -LiteralPath $p -Force -ErrorAction Stop | Where-Object Name -ne '.git' | Select-Object -First 501 | ForEach-Object { @{ name=$_.Name; dir=($_.PSIsContainer -and (-not ($_.Attributes -band [IO.FileAttributes]::ReparsePoint) -or -not $_.LinkType -or ($_.Target -and [IO.Directory]::Exists(([IO.Path]::Combine([IO.Path]::GetDirectoryName($_.FullName), $_.Target[0])))))) } }) } "
@@ -23,9 +23,33 @@ export async function windowsDirectories(root, rels, on, deep) {
   return new Map(Object.entries(JSON.parse(r.stdout || "{}")).map(([k, v]) => [k, v === null ? null : Array.isArray(v) ? v : [v]]));
 }
 
+// One local folder, read in-process (a PowerShell listing costs 0.6s): its entries, or null.
+// PER_FOLDER + 1 kept, so store() can tell the folder was cut.
+async function localDirectory(path, links) {
+  let list;
+  try { list = (await readdir(path, { withFileTypes: true })).filter((e) => e.name !== ".git").slice(0, PER_FOLDER + 1); }
+  catch { return null; }
+  // A link (junction, symlink) to a folder isn't isDirectory(): it is one when it can be listed.
+  // Tried only with `links` (an open folder): a prefetched one is listed again when opened.
+  const isDir = (e) => e.isDirectory() || (links && readdir(`${path}/${e.name}`).then(() => true, () => false));
+  return Promise.all(list.map(async (e) => ({ name: e.name, dir: await isDir(e) })));
+}
+
 // Folders under root, by path from root ("" is root) → their entries, or null when gone.
+// `deep` lists each folder's subfolders too (the first 40), so opening one shows at once.
 export async function directories(root, rels, on, deep) {
-  if (!on && window()?.platform === "windows") return windowsDirectories(root, rels, on, deep);
+  if (!on) {
+    const out = new Map();
+    await Promise.all(rels.map(async (rel) => {
+      const entries = await localDirectory(rel ? `${root}/${rel}` : root, true);
+      out.set(rel, entries);
+      if (deep && entries) await Promise.all(entries.filter((e) => e.dir).slice(0, 40).map(async (d) => {
+        const sub = rel ? `${rel}/${d.name}` : d.name, list = await localDirectory(`${root}/${sub}`, false);
+        if (list && !out.has(sub)) out.set(sub, list);
+      }));
+    }));
+    return out;
+  }
   const out = new Map();
   for (const rel of rels) {
     try { out.set(rel, await directory(rel ? `${root}/${rel}` : root, on)); }

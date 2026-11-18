@@ -1,7 +1,7 @@
 // Shared by my-files and my-changes. A mod can't import from outside its own folder, so
 // install.ps1 copies this file into both (as ./common.js); edit it here, not there.
-import { div } from "gpui-kit";
-import { h_flex, Input } from "gpui-base";
+import { div, svg } from "gpui-kit";
+import { h_flex, v_flex, v_virtual_list, Input, Scrollbar } from "gpui-base";
 import { spaces, panes, focused, agents, exec, run, watchFolder } from "herdr";
 
 // Where the panels look: the focused pane's live folder (as the shipped panels do).
@@ -81,20 +81,31 @@ export function diffRows(lines) {
   });
 }
 
-// One diff row, 20px high. opts.hunkButton(row) adds controls on hunk headers;
-// opts.onPick(row, cx) makes "+"/"-" lines clickable, opts.picked(row) marks them.
+// One diff row, 20px high, with no clicks of its own (it is drawn inside a lazy list).
+// opts.picked(row) makes "+"/"-" lines look clickable and marks the picked ones.
 export function diffRow(row, t, opts = {}) {
   const { kind, number, text } = row;
   if (kind === "file") return div().w_full().px(12).h(20).flex_none().truncate().bg(t.selected).font_semibold().child(text);
-  if (kind === "@") return h_flex().w_full().h(20).flex_none().px(12).gap(8).items_center().bg(t.raised).text_color(t.dim)
-    .when(Boolean(opts.hunkButton), e => e.child(opts.hunkButton(row))).child(div().flex_1().min_w(0).truncate().child(text));
-  const pickable = Boolean(opts.onPick) && (kind === "+" || kind === "-"), picked = pickable && opts.picked?.(row);
-  // An id only on clickable lines: a commit's diff repeats hunk numbers per file.
+  if (kind === "@") return div().w_full().h(20).flex_none().px(12).bg(t.raised).text_color(t.dim).truncate().child(text);
+  const pickable = Boolean(opts.picked) && (kind === "+" || kind === "-"), picked = pickable && opts.picked(row);
   return h_flex().w_full().h(20).flex_none().gap(10)
     .when(kind === "+", (e) => e.bg(t.ansi2 + (picked ? "66" : "22"))).when(kind === "-", (e) => e.bg(t.ansi1 + (picked ? "66" : "22")))
-    .when(pickable, (e) => e.id(`row-${row.hunk}-${row.pos}`).cursor_pointer().on_click((_e, cx) => opts.onPick(row, cx)))
+    .when(pickable, (e) => e.cursor_pointer())
     .child(div().w(36).flex_none().text_right().text_color(picked ? t.foreground : t.dim).child(picked ? "✓" : number === undefined ? "" : String(number)))
     .child(div().flex_1().min_w(0).truncate().text_color(kind === "" ? t.dim : t.foreground).child(text));
+}
+
+// A scrolling list of 20px rows, in a code font, that builds only the rows on screen. row(i)
+// must not take its own clicks (nor be dragged): o.click(i, cx) and o.rightClick(i, event,
+// cx) get the row instead. The box is `relative`, so a caller can add an absolute menu to it.
+export function lazyRows(id, count, row, o = {}) {
+  const build = (range) => { const out = []; for (let i = range.start; i < range.end; i++) out.push(row(i)); return out; };
+  // Keys are indexes: o.click gets the row by its index.
+  return v_flex().id(`${id}-box`).relative().flex_1().min_h(0).font_family(o.font).text_size(12)
+    .child(v_virtual_list(id, count, 20, String, build).size_full()
+      .when(Boolean(o.click), (e) => e.on_item_click((key, cx) => o.click(Number(key), cx)))
+      .when(Boolean(o.rightClick), (e) => e.on_item_secondary_click((key, ev, cx) => o.rightClick(Number(key), ev, cx))))
+    .child(Scrollbar.vertical(id).viewport_from_layout().absolute().inset_0());
 }
 
 // A small text button.
@@ -106,6 +117,19 @@ export function button(id, label, t, onClick, opts = {}) {
     .when(on, e => e.cursor_pointer().hover(s => s.bg(opts.primary ? t.solid : t.hover)).on_click((ev, cx) => { cx.stop_propagation(); onClick(ev, cx); }))
     .on_mouse_down("left", (_e, cx) => cx.stop_propagation())
     .child(label);
+}
+
+// A button with an icon (an svg path from the app folder, mods/<mod>/icon-x.svg) and its
+// name; opts.iconOnly drops the name. The name is always its tooltip. Other opts as button.
+export function iconButton(id, icon, name, t, onClick, opts = {}) {
+  const color = opts.enabled === false ? t.dim : opts.primary ? t.solid_foreground : t.foreground;
+  const label = h_flex().gap(5).items_center().child(svg(icon).size(14).flex_none().text_color(color)).when(!opts.iconOnly, (e) => e.child(name));
+  return button(id, label, t, onClick, opts).tooltip(name);
+}
+
+// Buttons joined into one bar: the 1px gaps show the border colour as dividers.
+export function buttonGroup(t, buttons) {
+  return h_flex().flex_none().gap(1).rounded(7).overflow_hidden().border_1().border_color(t.border).bg(t.border).children(buttons.map((b) => b.rounded(0)));
 }
 
 // A one-line text box; focusedNow draws its accent border.

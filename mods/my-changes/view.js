@@ -2,7 +2,7 @@
 import { div } from "gpui-kit";
 import { v_flex, h_flex, Input, Scrollbar } from "gpui-base";
 import { settings } from "herdr";
-import { diffRow, button, textInput } from "./common.js";
+import { diffRow, button, iconButton, buttonGroup, textInput, lazyRows } from "./common.js";
 
 export const viewMethods = {
   fileRow(item, t) {
@@ -41,27 +41,40 @@ export const viewMethods = {
     ];
   },
 
-  hunkButton(row, t) {
-    if (!this.raw || row.hunk === undefined) return div();
-    const n = [...this.chosen].filter((k) => k.startsWith(`${row.hunk}:`)).length, unstage = this.sel?.side === "staged";
-    const what = n ? `${n} line${n > 1 ? "s" : ""}` : "hunk";
-    const stage = div().id(`hunk-${row.hunk}`).flex_none().px(6).rounded(4).bg(n ? t.accent : t.background).text_color(n ? t.accent_foreground : t.accent)
-      .cursor_pointer().hover((s) => s.bg(t.hover)).on_click((_e, cx) => this.applyHunk(row.hunk, cx)).child(`${unstage ? "Unstage" : "Stage"} ${what}`);
-    if (unstage) return stage;
-    const asking = this.confirm?.hunk === row.hunk;
-    return h_flex().flex_none().gap(4).child(stage)
-      .child(div().id(`discard-hunk-${row.hunk}`).flex_none().px(6).rounded(4).bg(asking ? t.ansi1 : t.background).text_color(asking ? t.background : t.ansi1)
-        .cursor_pointer().hover((s) => s.bg(t.hover)).on_click((_e, cx) => this.discardHunk(row.hunk, cx)).child(asking ? `Discard ${what}? click again` : `Discard ${what}`));
+  // "Stage hunk", "Unstage 2 lines": the hunk menu's first item for hunk n.
+  hunkAction(n) {
+    const lines = this.chosenIn(n).size, what = lines ? `${lines} line${lines > 1 ? "s" : ""}` : "hunk";
+    return { what, stage: `${this.sel?.side === "staged" ? "Unstage" : "Stage"} ${what}` };
   },
 
+  // A list builds only the rows on screen and a row takes one click: a click on a "+" or "-"
+  // line picks it, a right-click there opens Stage / Discard for its hunk.
   diffView(id, rows, t, withHunks) {
-    const opts = withHunks && this.raw ? {
-      hunkButton: (r) => this.hunkButton(r, t),
-      onPick: (r, cx) => this.pickLine(r, cx),
-      picked: (r) => this.chosen.has(`${r.hunk}:${r.pos}`),
-    } : {};
-    return v_flex().id(id).flex_1().min_h(0).overflow_y_scrollbar().py(2).font_family(settings().font_family ?? "JetBrains Mono").text_size(12)
-      .children(rows.map((row) => diffRow(row, t, opts)));
+    const font = settings().font_family ?? "JetBrains Mono";
+    if (!withHunks || !this.raw) return lazyRows(id, rows.length, (i) => diffRow(rows[i], t), { font });
+    const opts = { picked: (r) => this.chosen.has(`${r.hunk}:${r.pos}`) };
+    const m = this.hunkMenu;
+    return lazyRows(id, rows.length, (i) => diffRow(rows[i], t, opts), { font,
+      // pickLine ignores all but "+" / "-" lines; an open menu closes itself on any press outside it.
+      click: (i, cx) => this.pickLine(rows[i], cx),
+      rightClick: (i, _e, cx) => { const r = rows[i]; this.confirm = null; this.hunkMenu = r.kind === "+" || r.kind === "-" ? { hunk: r.hunk } : null; cx.notify(); },
+    })
+      // The row's right-click comes first; this one, on the box, says where to open the menu.
+      .on_mouse_down("right", (e, cx) => {
+        const h = this.hunkMenu, p = e.local_position, b = e.bounds;
+        if (h && h.x === undefined && p && b) { h.x = Math.max(0, Math.min(p.x, b.width - 200)); h.y = Math.max(0, Math.min(p.y, b.height - 64)); cx.notify(); }
+      })
+      .when(Boolean(m && m.x !== undefined), (e) => e.child(this.hunkMenuView(m, t)));
+  },
+
+  hunkMenuView(m, t) {
+    const a = this.hunkAction(m.hunk), asking = this.confirm?.hunk === m.hunk;
+    return v_flex().id("hunk-menu").absolute().left(m.x).top(m.y).p(4).gap(2).items_start().rounded(6).bg(t.raised).border_1().border_color(t.border)
+      .on_mouse_down_out((_e, cx) => { this.hunkMenu = null; this.confirm = null; cx.notify(); })
+      .child(button("hunk-stage", a.stage, t, (_e, cx) => { this.hunkMenu = null; this.applyHunk(m.hunk, cx); }))
+      // Asks twice, as before: the first click turns it into "click again".
+      .when(this.sel?.side !== "staged", (e) => e.child(button("hunk-discard", asking ? `Discard ${a.what}? click again` : `Discard ${a.what}`, t,
+        (_e, cx) => { if (asking) this.hunkMenu = null; this.discardHunk(m.hunk, cx); }, { danger: true })));
   },
 
   // Changes | History, side by side across the whole panel; the picked one underlined.
@@ -79,6 +92,7 @@ export const viewMethods = {
   },
 
   toolbar(t) {
+    const tool = (id, name, onClick, opts) => iconButton(id, `mods/my-changes/icon-${id}.svg`, name, t, onClick, { iconOnly: !this.wide, ...opts });
     const busy = Boolean(this.busy), track = this.track ? ` ${this.track.replace(/ahead /, "↑").replace(/behind /, "↓").replace(", ", " ")}` : "";
     return h_flex().flex_none().px(10).py(6).gap(5).items_center().border_b(1).border_color(t.border).flex_wrap()
       .child(button("branch", `⎇ ${this.branch ?? "…"}${track} ▾`, t, (_e, cx) => this.openBranches(cx), { active: Boolean(this.menu) }))
@@ -86,12 +100,16 @@ export const viewMethods = {
         .child(button("abort", `Abort ${this.inProgress}`, t, (_e, cx) => this.abort(cx), { danger: true })))
       .child(div().flex_1())
       .when(busy, (e) => e.child(div().text_size(11).text_color(t.dim).child(`${this.busy}…`)))
-      .child(button("sync", "Sync", t, (_e, cx) => this.sync(cx), { enabled: !this.loading }))
-      .child(button("fetch", "Fetch", t, (_e, cx) => this.fetch(cx), { enabled: !busy }))
-      .child(button("pull", "Pull", t, (_e, cx) => this.pull(cx), { enabled: !busy }))
-      .child(button("push", "Push", t, (_e, cx) => this.push(cx), { enabled: !busy }))
-      .child(button("stash", "Stash", t, (_e, cx) => this.stash(cx), { enabled: !busy && this.files.length > 0 }))
-      .child(button("pop", "Pop", t, (_e, cx) => this.pop(cx), { enabled: !busy }));
+      .child(tool("sync", "Sync", (_e, cx) => this.sync(cx), { enabled: !this.loading, iconOnly: true }))
+      .child(buttonGroup(t, [
+        tool("fetch", "Fetch", (_e, cx) => this.fetch(cx), { enabled: !busy }),
+        tool("pull", "Pull", (_e, cx) => this.pull(cx), { enabled: !busy }),
+        tool("push", "Push", (_e, cx) => this.push(cx), { enabled: !busy })]))
+      .child(buttonGroup(t, [
+        tool("stash", "Stash", (_e, cx) => this.stash(cx), { enabled: !busy && this.files.length > 0 }),
+        tool("pop", "Pop", (_e, cx) => this.pop(cx), { enabled: !busy })]))
+      // Too narrow for the names: icons only (each keeps its name as a tooltip).
+      .id("toolbar").on_size_change(({ width }, cx) => { const wide = width >= 520; if (wide !== this.wide) { this.wide = wide; cx.notify(); } });
   },
 
   branchMenu(t) {

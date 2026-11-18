@@ -3,7 +3,7 @@
 import { View, div, svg, image } from "gpui-kit";
 import { v_flex, h_flex, Editor, InputState } from "gpui-base";
 import { theme, settings, nextCommand, shared } from "herdr";
-import { locationKey, focusChat, diffRow, button, textInput } from "./common.js";
+import { locationKey, focusChat, diffRow, button, iconButton, buttonGroup, textInput, lazyRows } from "./common.js";
 import { TOTAL } from "./tree.js";
 import { iconFor } from "./icons.js";
 import { treeMethods } from "./tree.js";
@@ -61,6 +61,7 @@ export default class Files extends View {
       blame: () => this.file && this.showBlame(cx),
       history: () => this.file && this.showHistory(cx),
       send: () => (arg || this.file) && this.send(arg || this.file, cx),
+      "send-code": () => this.code && this.sendCode(cx), // the selected code, with its file and lines
       "replace-in-file": () => { const [q, to] = arg.split("|"); this.find.set_value(q); this.replaceIn.set_value(to ?? ""); this.replaceEvery(cx); },
       menu: () => this.openMenu(arg, cx),
       "new-file": () => this.nameThen("new-file", arg, cx),
@@ -96,6 +97,7 @@ export default class Files extends View {
 
   // --- drawing -------------------------------------------------------------------
 
+  // Every shown row is built (no lazy list): a lazy list's rows can't be dragged to a terminal.
   treeRows(prefix, depth, out, t) {
     if (out.length >= TOTAL || depth > 40) return out;
     for (const entry of this.entries.get(prefix) ?? []) {
@@ -115,26 +117,33 @@ export default class Files extends View {
     return out;
   }
 
-  // A scrolling list that fills what's left of the panel (rows capped by the callers).
-  lazy(id, count, row) {
-    const out = [];
-    for (let i = 0; i < Math.min(count, 5000); i++) out.push(row(i));
-    return v_flex().id(id).flex_1().min_h(0).overflow_y_scrollbar().font_family(settings().font_family ?? "JetBrains Mono").text_size(12).children(out);
-  }
-
   fileBody(t) {
     if (!this.code) return div().p(12).text_color(t.dim).child(this.fileError || "Loading file…");
-    if (this.mode === "edit") return Editor.new(this.code).flex_1().min_h(0);
+    if (this.mode === "edit") {
+      // Right-click: a small menu at the pointer to send the selected code to the chat.
+      const m = this.codeMenu;
+      return div().id("files-code").relative().flex_1().min_h(0).flex().flex_col()
+        // Kept inside the panel near its right or bottom edge (the menu is about 150 x 40).
+        .on_mouse_down("right", (e, cx) => {
+          const p = e.local_position, b = e.bounds;
+          if (p && b) { this.codeMenu = { x: Math.max(0, Math.min(p.x, b.width - 150)), y: Math.max(0, Math.min(p.y, b.height - 40)) }; cx.notify(); }
+        })
+        .child(Editor.new(this.code).flex_1().min_h(0))
+        .when(Boolean(m), (el) => el.child(v_flex().id("code-menu").absolute().left(m.x).top(m.y).p(4).rounded(6).bg(t.raised).border_1().border_color(t.border)
+          .on_mouse_down_out((_e, cx) => { this.codeMenu = null; cx.notify(); })
+          .child(iconButton("code-send", "mods/my-files/icon-chat.svg", "Send to chat", t, (_e, cx) => this.sendCode(cx)))));
+    }
     if (!this.rows) return div().p(12).text_color(t.dim).child("Loading…");
+    const font = settings().font_family ?? "JetBrains Mono";
     if (this.mode === "blame") {
-      return this.lazy("files-blame", this.rows.length, (i) => {
-        const r = this.rows[i], first = this.rows[i - 1]?.hash !== r.hash;
-        return h_flex().id(`blame-${i}`).w_full().h(20).flex_none().gap(8).px(6).cursor_pointer().hover(s => s.bg(t.hover))
-          .on_click((_e, cx) => { if (!/^0+$/.test(r.hash)) this.showCommit(r.hash, cx); })
+      const rows = this.rows;
+      return lazyRows("files-blame", rows.length, (i) => {
+        const r = rows[i], first = rows[i - 1]?.hash !== r.hash;
+        return h_flex().w_full().h(20).flex_none().gap(8).px(6).cursor_pointer().hover(s => s.bg(t.hover))
           .child(div().w(160).flex_none().truncate().text_color(first ? t.muted : t.background).child(/^0+$/.test(r.hash) ? "not committed" : `${r.hash.slice(0, 7)} ${r.date} ${r.author}`))
           .child(div().w(36).flex_none().text_right().text_color(t.dim).child(String(r.line)))
           .child(div().flex_1().min_w(0).truncate().child(r.text));
-      });
+      }, { font, click: (i, cx) => { if (!/^0+$/.test(rows[i].hash)) this.showCommit(rows[i].hash, cx); } });
     }
     if (this.mode === "history") {
       if (!this.rows.length) return div().p(12).text_color(t.dim).child("No commits for this file yet");
@@ -144,7 +153,8 @@ export default class Files extends View {
           .child(div().text_size(11).text_color(t.dim).truncate().child(`${r.hash} · ${r.date} · ${r.author}`))));
     }
     // a commit's change to this file
-    return this.lazy("files-commit", this.rows.length, (i) => diffRow(this.rows[i], t));
+    const rows = this.rows;
+    return lazyRows("files-commit", rows.length, (i) => diffRow(rows[i], t), { font });
   }
 
   render(cx) {
@@ -157,25 +167,29 @@ export default class Files extends View {
       else this.open(this.rel(asked.path), null, cx);
     }
     const t = theme(), file = this.file, dirty = this.dirty();
+    const tool = (id, icon, name, onClick, opts) => iconButton(`files-${id}`, `mods/my-files/icon-${icon}.svg`, name, t, onClick, { iconOnly: !this.wide, ...opts });
     const header = h_flex().h(42).flex_none().px(12).gap(6).items_center().border_b(1).border_color(t.border)
-      .when(Boolean(file), el => el.child(button("files-back", "←", t, (_e, cx) => {
+      .when(Boolean(file), el => el.child(tool("back", "back", "Back", (_e, cx) => {
         if (this.mode !== "edit") { this.mode = "edit"; cx.notify(); return; }
         if (dirty && !this.confirmClose) { this.confirmClose = true; cx.notify(); return; }
         this.close(); cx.notify();
-      })))
+      }, { iconOnly: true })))
       .child(div().font_semibold().child("Files"))
       .child(div().flex_1().min_w(0).truncate().text_right().text_size(12).text_color(dirty ? t.blocked : t.dim)
         .child(file ? `${file}${dirty ? " ●" : ""}` : this.root?.split(/[\\/]/).pop() ?? ""))
-      .when(!file && Boolean(this.root), el => el.child(button("files-sync", "Sync", t, (_e, cx) => this.refresh(cx), { enabled: !this.loading }))
+      .when(!file && Boolean(this.root), el => el.child(tool("sync", "sync", "Sync", (_e, cx) => this.refresh(cx), { enabled: !this.loading, iconOnly: true }))
         .child(button("files-new", "+", t, (_e, cx) => this.openMenu("", cx), { active: this.menu?.path === "" })));
-    // Buttons wrap and the find box gets a row of its own, so a narrow panel still fits.
+    // The find box gets a row of its own; too narrow for the names, the buttons show icons only.
     const fileBar = file && v_flex().flex_none().px(10).py(6).gap(6).when(!this.showReplace, el => el.border_b(1).border_color(t.border))
-      .child(h_flex().gap(6).items_center().flex_wrap()
-        .when(this.isRepo, el => el.child(button("files-blame", "Blame", t, (_e, cx) => this.showBlame(cx), { active: this.mode === "blame" }))
-          .child(button("files-history", "History", t, (_e, cx) => this.showHistory(cx), { active: this.mode === "history" || this.mode === "commit" })))
-        .child(button("files-send", "@ chat", t, (_e, cx) => this.send(file, cx)))
-        .when(!this.readonly && Boolean(this.code), el => el.child(button("files-replace-toggle", "Replace", t, (_e, cx) => { this.showReplace = !this.showReplace; cx.notify(); }, { active: this.showReplace }))
-          .child(button("files-save", "Save", t, (_e, cx) => this.save(cx), { primary: true, enabled: dirty }))))
+      .child(h_flex().id("files-bar").gap(6).items_center().flex_wrap()
+        .on_size_change(({ width }, cx) => { const wide = width >= 400; if (wide !== this.wide) { this.wide = wide; cx.notify(); } })
+        .when(this.isRepo, el => el.child(buttonGroup(t, [
+          tool("blame", "blame", "Blame", (_e, cx) => this.showBlame(cx), { active: this.mode === "blame" }),
+          tool("history", "history", "History", (_e, cx) => this.showHistory(cx), { active: this.mode === "history" || this.mode === "commit" })])))
+        .child(tool("send", "chat", "Chat", (_e, cx) => this.send(file, cx)))
+        .when(!this.readonly && Boolean(this.code), el => el.child(tool("replace-toggle", "replace", "Replace", (_e, cx) => { this.showReplace = !this.showReplace; cx.notify(); }, { active: this.showReplace }))
+          .child(div().flex_1())
+          .child(tool("save", "save", "Save", (_e, cx) => this.save(cx), { primary: true, enabled: dirty }))))
       .child(h_flex().child(textInput("files-find", this.find, this.typing === "find", t)));
     const replaceInBar = file && this.showReplace && !this.readonly && Boolean(this.code) && h_flex().flex_none().px(10).pb(6).gap(6).items_center().border_b(1).border_color(t.border)
       .child(textInput("files-replace-in", this.replaceIn, this.typing === "replace-in", t))
@@ -217,7 +231,7 @@ export default class Files extends View {
       .when(Boolean(this.note), el => el.child(div().px(12).py(4).text_size(11).text_color(/^(Saved|Replaced|Created|Renamed|Deleted)/.test(this.note) ? t.ansi2 : this.note.endsWith("…") ? t.dim : t.ansi1).child(this.note)))
       .child(file ? this.fileBody(t) : results || tree)
       .child(div().flex_none().px(12).py(4).border_t(1).border_color(t.border).text_size(11).text_color(t.dim).truncate()
-        .child(file ? "ctrl+s save · ctrl+f find · ctrl+h replace · esc chat" : "click: open · right-click: @chat, new, rename, delete · drag: path to a terminal · / search"));
+        .child(file ? "ctrl+s save · ctrl+f find · ctrl+h replace · right-click: send code · esc chat" : "click: open · right-click: @chat, new, rename, delete · drag: path to a terminal · / search"));
   }
 }
 

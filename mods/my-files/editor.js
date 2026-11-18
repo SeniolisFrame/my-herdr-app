@@ -1,13 +1,13 @@
 // Files: the open file (edit, save, find, replace), its blame and history.
 import { EditorState } from "gpui-base";
 import { readTextFile, writeTextFile, theme, settings } from "herdr";
-import { READ, git, toLines, untab, diffRows } from "./common.js";
-import { usesTabs, tabsToSpaces, spacesToTabs, replaceAll } from "./text.js";
+import { READ, git, toLines, untab, diffRows, sendToChat } from "./common.js";
+import { usesTabs, tabsToSpaces, spacesToTabs, replaceAll, snippet } from "./text.js";
 
 export const LANG = { ts: "js", tsx: "js", mts: "js", cts: "js", jsx: "js", mjs: "js", toml: "yaml", jsonc: "json", svelte: "html", vue: "html" };
 export const MAX_EDIT = 400000;
 
-// git blame --line-porcelain → one row per line.
+// git blame --porcelain → one row per line (a commit's author and date come once, on its first line).
 export function parseBlame(out) {
   const rows = [], meta = {};
   let cur = null;
@@ -27,7 +27,7 @@ export const editorMethods = {
 
   close() {
     this.code?.release(); this.code = null; this.file = null; this.fileError = null; this.mode = "edit";
-    this.rows = null; this.note = null; this.confirmClose = false;
+    this.rows = null; this.note = null; this.confirmClose = false; this.codeMenu = null;
   },
 
   // Files under the tree's folder are kept relative; Changes may send a repo file
@@ -115,6 +115,20 @@ export const editorMethods = {
     });
   },
 
+  // The selected code to the chat, with its file and lines (right-click in the file).
+  sendCode(cx) {
+    this.codeMenu = null;
+    const r = this.code?.selected_range();
+    if (!r || r.start === r.end) { this.note = "Select some code first"; cx.notify(); return; }
+    const message = snippet(this.file, this.code.value(), r.start, r.end);
+    cx.spawn(async (cx) => {
+      try { await sendToChat(this.tabs ? spacesToTabs(message) : message, cx); this.note = null; }
+      catch (e) { this.note = `Not sent: ${e.message ?? e}`; }
+      cx.notify();
+    });
+    cx.notify();
+  },
+
   // ctrl+h: Replace swaps the found text under the cursor and finds the next one;
   // All swaps every one in the file (the file then needs saving).
   replaceOne(cx) {
@@ -147,7 +161,7 @@ export const editorMethods = {
   // Blame and history of the open file, as rows under the header.
   showBlame(cx) {
     if (this.mode === "blame") { this.mode = "edit"; cx.notify(); return; }
-    this.loadRows("blame", async () => parseBlame(await git(this.root, this.on, [...READ, "blame", "--line-porcelain", "--", this.file])), cx);
+    this.loadRows("blame", async () => parseBlame(await git(this.root, this.on, [...READ, "blame", "--porcelain", "--", this.file])), cx);
   },
 
   showHistory(cx) {

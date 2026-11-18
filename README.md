@@ -58,8 +58,8 @@ cd my-herdr-app
 APP="${HERDR_APP_HOME:-$HOME/.config/herdr-app}"
 for m in my-files my-changes; do
   mkdir -p "$APP/mods/$m"
-  cp shared/common.js mods/$m/*.js mods/$m/mod.json "$APP/mods/$m/"   # not the *.test.mjs files
-  [ -d mods/$m/icons ] && cp -r mods/$m/icons mods/$m/*.svg "$APP/mods/$m/"
+  cp shared/common.js mods/$m/*.js mods/$m/*.svg mods/$m/mod.json "$APP/mods/$m/"   # not the *.test.mjs files
+  [ -d mods/$m/icons ] && cp -r mods/$m/icons "$APP/mods/$m/"
   herdr-app check "$APP/mods/$m"     # must say: check passed
 done
 cp layouts/my-herdr.json "$APP/layouts/"
@@ -144,6 +144,8 @@ rm -rf "$APP/mods/my-files" "$APP/mods/my-changes" "$APP/layouts/my-herdr.json"
   folder in the top folder. On this computer only.
 - **Blame**: who changed each line; click a line to see that commit's change.
 - **History**: the file's commits; click one to see its change.
+- Select code in the open file and **right-click → Send to chat**: it types the
+  file and lines (`src/a.go:12-18`) and the code in a code block into the chat.
 - **@ chat** types `@path ` into the chat (the agent in this tab, else the focused
   terminal) without Enter. It goes through the clipboard and puts your clipboard
   back. Dragging a file onto a terminal pastes its full path.
@@ -160,10 +162,11 @@ rm -rf "$APP/mods/my-files" "$APP/mods/my-changes" "$APP/layouts/my-herdr.json"
   is in both. The box moves a file from one list to the other; **Stage all** /
   **Unstage all**.
 - Click a file to see its diff: an unstaged file shows what isn't staged yet, a
-  staged one shows what is. Each hunk has **Stage hunk** (or **Unstage hunk**).
-  Click `+` / `-` lines to pick them: the button becomes **Stage 2 lines** and
-  stages only those. **Discard hunk** (or **Discard 2 lines**, click twice) throws
-  them out of the file; what is staged stays, and the file keeps its line endings.
+  staged one shows what is. Right-click a changed (`+` / `-`) line for its hunk's **Stage hunk** (or
+  **Unstage hunk**) and **Discard hunk**. Click `+` / `-` lines to pick them: the
+  menu then says **Stage 2 lines** and stages only those. **Discard hunk** (or
+  **Discard 2 lines**, click twice) throws them out of the file; what is staged
+  stays, and the file keeps its line endings.
 - **Open** (or double-click the file) opens it in Files. **Discard** throws away
   the file's changes (click twice).
 - Type a message and **Commit** (commits what is staged).
@@ -214,7 +217,7 @@ or script them: `herdr-app do my-changes.pull`.
 
 - `my-files.<cmd>`: `sync`, `toggle:<folder>`, `open:<path>[:<line>]`, `save`, `close`, `find:<text>`,
   `replace-in-file:<text>|<new>`, `search:<text>`, `replace-all:<new>`, `blame`,
-  `history`, `send[:<path>]`, `type:<text>`, `menu:<path>` then `new-file:<name>`,
+  `history`, `send[:<path>]`, `send-code`, `type:<text>`, `menu:<path>` then `new-file:<name>`,
   `new-folder:<name>`, `rename:<name>` or `delete` (twice)
 - `my-changes.<cmd>`: `sync`, `select:<path>` (or `select:staged:<path>` /
   `select:unstaged:<path>`), `stage`, `stage-all`, `unstage-all`, `hunk:<n>`,
@@ -237,9 +240,10 @@ Example `keys.json` section:
 - git runs without a terminal: pull and push need credentials that don't prompt in
   a terminal (Git Credential Manager, ssh-agent).
 - History shows the last 500 commits; its search looks in those.
-- On Windows every git and folder listing starts a program, which costs 0.3 s to
-  2 s on some machines: the panels show what they expect first and read in the
-  background, but an action still waits for its own git.
+- Every git call starts a program (about 25 ms here, more on slow machines): the
+  panels show what they expect first and read in the background, but an action
+  still waits for its own git. Folders on this computer are listed in-process; a
+  space on another machine lists them with sh (or PowerShell), which is slower.
 - A file with both CRLF and LF line endings is saved with CRLF on every line.
 
 ## Code
@@ -251,7 +255,7 @@ other files add its methods by job (`Object.assign(<Class>.prototype, ...)`).
 | --- | --- |
 | `shared/common.js` | helpers both panels use (git, the chat, diff rows, buttons, text box, folder watch) |
 | `mods/my-files/main.js` | Files: the class, commands, keys, drawing |
-| `mods/my-files/tree.js` | listing folders (one PowerShell for several) and the refresh |
+| `mods/my-files/tree.js` | listing folders (in-process here, sh or PowerShell on another machine) and the refresh |
 | `mods/my-files/editor.js` | the open file: edit, save, find, replace, blame, history |
 | `mods/my-files/actions.js` | search and replace across files, @path, new / rename / delete |
 | `mods/my-files/icons.js`, `icons/` | which icon a file or folder gets; the icons are [Material Icon Theme](https://github.com/material-extensions/vscode-material-icon-theme)'s (MIT) (test: `node mods/my-files/icons.test.mjs`) |
