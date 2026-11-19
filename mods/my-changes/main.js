@@ -97,7 +97,6 @@ export default class Changes extends View {
   // Shows repo gitDir's message in the box (null: an empty box), keeping the one it had.
   boxTo(gitDir) {
     if (gitDir === this.boxFor) return;
-    this.dbg("box", { from: this.boxFor, to: gitDir, keep: this.message.value(), load: (gitDir && this.typed.get(gitDir)) || "" });
     if (this.boxFor) this.typed.set(this.boxFor, this.message.value());
     const text = (gitDir && this.typed.get(gitDir)) || "";
     this.message.set_value(text); this.hasMessage = Boolean(text.trim()); this.boxFor = gitDir;

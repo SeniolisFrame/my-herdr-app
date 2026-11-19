@@ -208,7 +208,6 @@ export const actionsMethods = {
       if (!this.on && before) last = await writeTextFile(file, "", before).then(() => "", () => before);
       const ask = { file, on: this.on, agent, last };
       this.asks.set(gitDir, ask);
-      this.dbg("ask", { gitDir, file, agent, last: ask.last, agents: agents().map((a) => [a.address, a.status, a.tab]) });
       try {
         await sendToChat(`Write a git commit message for the staged changes (git diff --cached). Save only the message to ${file}, replacing that file. Don't commit.`, cx);
         this.note = { text: "Asked the chat: press Enter there. The message shows up here when it's saved." };
@@ -223,7 +222,6 @@ export const actionsMethods = {
     for (const [gitDir, ask] of this.asks) {
       if (!ask.agent || ask.taking) continue;
       const status = agents().find((a) => a.address === ask.agent)?.status;
-      if (status !== ask.seen) { ask.seen = status; this.dbg("status", { gitDir, agent: ask.agent, status, working: ask.working }); }
       if (status === "working") { ask.working = true; continue; }
       if (!ask.working) continue;
       ask.working = false; ask.taking = true;
@@ -231,16 +229,12 @@ export const actionsMethods = {
     }
   },
 
-  // DEBUG (temporary): the last few steps of Ask chat, readable in shared.json.
-  dbg(what, data) { this.dbgLog = [...(this.dbgLog ?? []).slice(-15), { what, at: new Date().toISOString(), ...data }]; setShared("my-changes.debug", this.dbgLog); },
-
   // Says whether a new message came. It goes in the box when the box shows that repo, else it
   // waits in that repo's kept text until the repo shows.
   async takeAskedMessage(gitDir = this.gitDir) {
     const ask = gitDir && this.asks.get(gitDir);
     if (!ask) return false;
     const text = await readTextFile(ask.file, { on: ask.on }).catch(() => null);
-    this.dbg("take", { gitDir, boxFor: this.boxFor, text, last: ask.last });
     if (!text?.trim() || text === ask.last) return false;
     ask.last = text;
     if (this.boxFor !== gitDir) { this.typed.set(gitDir, text.trim()); return true; }
