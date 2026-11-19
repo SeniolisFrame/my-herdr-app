@@ -2,7 +2,7 @@
 import { div } from "gpui-kit";
 import { v_flex, h_flex, Input, Scrollbar } from "gpui-base";
 import { settings } from "herdr";
-import { diffRow, button, iconButton, buttonGroup, textInput, lazyRows } from "./common.js";
+import { diffRow, button, iconButton, buttonGroup, textInput, lazyRows, foldPanel } from "./common.js";
 
 export const viewMethods = {
   fileRow(item, t) {
@@ -86,7 +86,9 @@ export const viewMethods = {
       .on_click(onClick).child(label)
       .when(Boolean(badge), (e) => e.child(div().px(6).rounded(8).bg(t.raised).text_size(11).text_color(t.muted).child(String(badge))));
     const onLog = this.view !== "changes" && !this.menu;
+    // » on the edge next to the chat, as Files' « is: both fold buttons sit where the eye is.
     return h_flex().h(40).flex_none().border_b(1).border_color(t.border)
+      .child(div().flex_none().pl(8).flex().items_center().child(button("changes-fold", "»", t, () => foldPanel(this, "changes", true), { name: "Hide Changes" })))
       .child(tab("changes", "Changes", !onLog, (_e, cx) => { this.view = "changes"; this.menu = null; cx.notify(); }, count))
       .child(tab("history", "History", onLog, (_e, cx) => { this.menu = null; if (this.view === "changes") this.openLog(cx); else { this.view = "log"; cx.notify(); } }));
   },

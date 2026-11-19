@@ -5,7 +5,7 @@
 import { View, div } from "gpui-kit";
 import { v_flex, h_flex, InputState } from "gpui-base";
 import { exec, readTextFile, theme, nextCommand } from "herdr";
-import { location, locationKey, READ, git, toLines, watchWhile, sendToChat, focusChat, untab, diffRows, button } from "./common.js";
+import { location, locationKey, READ, git, toLines, watchWhile, sendToChat, focusChat, untab, diffRows, button, foldPanel, trackWidth, foldedStrip } from "./common.js";
 import { splitDiff } from "./patch.js";
 import { MAX_FILES, MAX_LINES, PREFETCH_LINES, LOG_PAGE, IN_PROGRESS, sides } from "./status.js";
 import { actionsMethods } from "./actions.js";
@@ -19,6 +19,7 @@ export default class Changes extends View {
     // Per place (workspace + tab + folder): its last state, and its newest load.
     // shortcut: kept until the app closes, even for closed tabs; fine for a handful, drop on tab close if many.
     this.saved = new Map(); this.latest = new Map();
+    this.openWidth = 460; // unfolding goes back to this until the panel has been seen open (layout's px)
     // Per repo (git dir): the message file asked of the chat and its text before; kept across every
     // switch of pane, tab or workspace, so the message lands whenever that repo shows again.
     this.asks = new Map();
@@ -52,6 +53,7 @@ export default class Changes extends View {
     const f = this.selected(), item = this.sel;
     const run = {
       focus: () => this.handle.focus(),
+      fold: () => foldPanel(this, "changes", !this.folded), // fold into a strip, or open again
       // select:<path>, or select:staged:<path> / select:unstaged:<path> for one list
       select: () => {
         const m = /^(staged|unstaged):(.*)$/.exec(arg), p = m ? m[2] : arg;
@@ -314,6 +316,8 @@ export default class Changes extends View {
     if (locationKey() !== this.context) this.refresh(cx);
     this.checkAsk(cx);
     const t = theme(), f = this.selected(), item = this.sel;
+    if (this.folded) return foldedStrip("changes", "«", "Show Changes", t, () => foldPanel(this, "changes", false))
+      .id("my-changes").on_size_change(({ width }, cx) => trackWidth(this, width, cx));
     // Lists that fill the panel stay direct children of the root: one more flex level
     // and they lay out at zero height.
     const body = this.menu ? this.branchMenu(t)
@@ -335,11 +339,11 @@ export default class Changes extends View {
           : div().flex_1(),
         this.diffView("changes-diff", this.rows, t, true)];
     return v_flex().id("my-changes").size_full().min_h(0).rounded(10).overflow_hidden().bg(t.background).border_1().border_color(t.border).text_color(t.foreground).text_size(13)
-      .track_focus(this.handle).on_key_down((e, cx) => this.key(e, cx))
+      .track_focus(this.handle).on_key_down((e, cx) => this.key(e, cx)).on_size_change(({ width }, cx) => trackWidth(this, width, cx))
       .child(this.tabs(t))
       .when(Boolean(this.root), (e) => e.child(this.toolbar(t)))
       .when(Boolean(this.note?.text), (e) => e.child(h_flex().flex_none().px(12).py(4).gap(6).text_size(11).text_color(this.note.error ? t.ansi1 : t.ansi2)
-        .child(div().flex_1().child(this.note.text)).child(button("note-close", "×", t, (_e, cx) => { this.note = null; cx.notify(); }))))
+        .child(div().flex_1().child(this.note.text)).child(button("note-close", "×", t, (_e, cx) => { this.note = null; cx.notify(); }, { name: "Close message" }))))
       .children([body].flat())
       .when(this.view === "changes" && !this.menu && Boolean(this.root), (e) => e.child(this.commitBox(t)));
   }

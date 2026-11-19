@@ -220,6 +220,11 @@ it, keeps its own panels (open file, open folders, selected change): switching b
 shows them at once and refreshes behind. Switching away mid-load doesn't wait for it:
 the load finishes in the background and is kept for when you come back.
 
+**«** in the Files header and **»** before the Changes tab (each on the side next to
+the chat) fold that panel into a thin strip; its **»** / **«** opens it again at the width it had. Each side folds on its
+own, and a folded panel keeps everything (open file, unsaved edits, lists) and keeps
+refreshing. Open in Changes opens a folded Files.
+
 Keys when the panel has focus: `↑` `↓` select, `space` stage or unstage, `o` open
 in Files, `c` commit message, `l` history, `s` send `@path`, `esc` back (or to the
 chat).
@@ -229,6 +234,7 @@ chat).
 Both panels take commands, so you can bind keys in `~/.config/herdr-app/keys.json`
 or script them: `herdr-app do my-changes.pull`.
 
+- Both: `fold` (fold the panel, or open it again)
 - `my-files.<cmd>`: `sync`, `toggle:<folder>`, `open:<path>[:<line>]`, `save`, `close`, `find:<text>`,
   `replace-in-file:<text>|<new>`, `search:<text>`, `replace-all:<new>`, `blame`,
   `history`, `send[:<path>]`, `send-code`, `table`, `separator:<s>`, `type:<text>`, `menu:<path>` then `new-file:<name>`,

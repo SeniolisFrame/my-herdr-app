@@ -109,7 +109,7 @@
                                                                    "size":  {
                                                                                 "px":  360
                                                                             },
-                                                                   "min":  200,
+                                                                   "min":  36,
                                                                    "max":  800,
                                                                    "content":  {
                                                                                    "mod":  "my-files"
@@ -150,7 +150,7 @@
                                                                    "size":  {
                                                                                 "px":  460
                                                                             },
-                                                                   "min":  300,
+                                                                   "min":  36,
                                                                    "max":  1000,
                                                                    "content":  {
                                                                                    "mod":  "my-changes"

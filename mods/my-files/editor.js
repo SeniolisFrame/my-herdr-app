@@ -178,7 +178,7 @@ export const editorMethods = {
 
   findNext(cx) {
     const q = this.find.value().toLowerCase();
-    if (!q || !this.code) return;
+    if (!q || !this.code || this.mode === "table") return; // a table: Find filters its rows instead
     const text = this.code.value(), low = text.toLowerCase(), from = this.code.selected_range().end;
     let at = low.indexOf(q, from);
     if (at < 0) at = low.indexOf(q);

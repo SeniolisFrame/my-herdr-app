@@ -92,6 +92,8 @@ export function diffRow(row, t, opts = {}) {
     .when(kind === "+", (e) => e.bg(t.ansi2 + (picked ? "66" : "22"))).when(kind === "-", (e) => e.bg(t.ansi1 + (picked ? "66" : "22")))
     .when(pickable, (e) => e.cursor_pointer())
     .child(div().w(36).flex_none().text_right().text_color(picked ? t.foreground : t.dim).child(picked ? "✓" : number === undefined ? "" : String(number)))
+    // + / − as well as green / red: added and removed lines don't depend on telling the colours apart.
+    .child(div().w(8).flex_none().text_color(kind === "+" ? t.ansi2 : t.ansi1).child(kind === "+" ? "+" : kind === "-" ? "−" : ""))
     .child(div().flex_1().min_w(0).truncate().text_color(kind === "" ? t.dim : t.foreground).child(text));
 }
 
@@ -108,23 +110,44 @@ export function lazyRows(id, count, row, o = {}) {
     .child(Scrollbar.vertical(id).viewport_from_layout().absolute().inset_0());
 }
 
-// A small text button.
+// Folding a side panel into a thin strip and back: its layout node is resized; the panel keeps
+// all its state (open file, edits, lists) and carries on refreshing, it only draws the strip.
+export const FOLDED = 36;
+export function foldPanel(view, node, fold) { run("layout.resize", { id: node, px: fold ? FOLDED : view.openWidth }); }
+
+// From the panel root's on_size_change: folded under 80px (a fold, or dragged that thin); the
+// last open width is what unfolding goes back to.
+export function trackWidth(view, width, cx) {
+  const folded = width < 80;
+  if (!folded) view.openWidth = width;
+  if (folded !== Boolean(view.folded)) { view.folded = folded; cx.notify(); }
+}
+
+// The folded panel: one button (» or «) that opens it again.
+export function foldedStrip(id, label, name, t, onOpen) {
+  return v_flex().size_full().items_center().pt(8).rounded(10).bg(t.background).border_1().border_color(t.border)
+    .child(button(`${id}-unfold`, label, t, onOpen, { name }));
+}
+
+// A small text button. opts.name: what it does, for a button whose label is an icon or a
+// glyph (« × +): its tooltip and what a screen reader says (it would say nothing, or "×").
 export function button(id, label, t, onClick, opts = {}) {
   const on = opts.enabled !== false;
   return div().id(id).h(24).px(8).flex().flex_none().items_center().rounded(6).text_size(12)
     .bg(opts.primary && on ? t.solid : opts.active ? t.selected : t.raised)
     .text_color(!on ? t.dim : opts.primary ? t.solid_foreground : opts.danger ? t.ansi1 : t.foreground)
     .when(on, e => e.cursor_pointer().hover(s => s.bg(opts.primary ? t.solid : t.hover)).on_click((ev, cx) => { cx.stop_propagation(); onClick(ev, cx); }))
+    .when(Boolean(opts.name), e => e.tooltip(opts.name).accessibility_label(opts.name))
     .on_mouse_down("left", (_e, cx) => cx.stop_propagation())
     .child(label);
 }
 
 // A button with an icon (an svg path from the app folder, mods/<mod>/icon-x.svg) and its
-// name; opts.iconOnly drops the name. The name is always its tooltip. Other opts as button.
+// name; opts.iconOnly drops the name, which stays its tooltip and screen-reader name.
 export function iconButton(id, icon, name, t, onClick, opts = {}) {
   const color = opts.enabled === false ? t.dim : opts.primary ? t.solid_foreground : t.foreground;
   const label = h_flex().gap(5).items_center().child(svg(icon).size(14).flex_none().text_color(color)).when(!opts.iconOnly, (e) => e.child(name));
-  return button(id, label, t, onClick, opts).tooltip(name);
+  return button(id, label, t, onClick, { ...opts, name });
 }
 
 // Buttons joined into one bar: the 1px gaps show the border colour as dividers.

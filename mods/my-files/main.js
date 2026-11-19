@@ -3,7 +3,7 @@
 import { View, div, svg, image } from "gpui-kit";
 import { v_flex, h_flex, Editor, InputState } from "gpui-base";
 import { theme, settings, nextCommand, shared } from "herdr";
-import { locationKey, focusChat, diffRow, button, iconButton, buttonGroup, textInput, lazyRows } from "./common.js";
+import { locationKey, focusChat, diffRow, button, iconButton, buttonGroup, textInput, lazyRows, foldPanel, trackWidth, foldedStrip } from "./common.js";
 import { TOTAL } from "./tree.js";
 import { iconFor } from "./icons.js";
 import { treeMethods } from "./tree.js";
@@ -42,6 +42,7 @@ export default class Files extends View {
       state.on("blur", (_e, cx) => { this.typing = null; cx.notify(); });
     }
     this.openRequest = shared("my-files.open")?.n; // an old request from Changes stays done
+    this.openWidth = 360; // unfolding goes back to this until the panel has been seen open (layout's px)
     // No timer (each refresh starts PowerShell and git): the folder watch and Sync do it.
     this.refresh(cx);
     cx.spawn(async cx => { for (;;) { this.command(await nextCommand(), cx); cx.notify(); } });
@@ -53,6 +54,7 @@ export default class Files extends View {
     const i = c.indexOf(":"), name = i < 0 ? c : c.slice(0, i), arg = i < 0 ? "" : c.slice(i + 1);
     const run = {
       focus: () => this.handle.focus(),
+      fold: () => foldPanel(this, "files", !this.folded), // fold into a strip, or open again
       sync: () => this.refresh(cx),
       toggle: () => arg && this.toggle(arg, cx), // open or close a folder
       open: () => { const m = /^(.*?)(?::(\d+))?$/.exec(arg); this.open(m[1], m[2] ? { line: +m[2] } : null, cx); },
@@ -88,6 +90,7 @@ export default class Files extends View {
     if (k === "escape") {
       cx.stop_propagation();
       if (this.typing) { this.typing = null; this.handle.focus(); }
+      else if (this.codeMenu) this.codeMenu = null; // the right-click Send to chat menu
       else if (this.menu) { this.menu = null; this.nameAction = null; }
       else if (this.mode !== "edit") this.mode = "edit";
       else focusChat();
@@ -143,7 +146,10 @@ export default class Files extends View {
         .child(div().id("files-table-x").size_full().overflow_x_scrollbar()
           .child(v_flex().w(44 + tb.widths.reduce((a, b) => a + b, 0)).h_full().font_family(font).text_size(12)
             .child(line(tb.rows[0] ?? [], 0, true))
-            .child(lazyRows("files-table", tb.shown.length, (i) => line(tb.rows[tb.shown[i]], tb.shown[i], false), { font })))));
+            .child(lazyRows("files-table", tb.shown.length, (i) => line(tb.rows[tb.shown[i]], tb.shown[i], false), { font }))))
+        // A filter that keeps nothing says so and how to get the rows back, not a blank table.
+        .when(Boolean(q) && !tb.shown.length, (e) => e.child(div().absolute().top(28).left(0).right(0).p(12).text_size(12).text_color(t.dim)
+          .child(`No row contains “${this.find.value().trim()}”. Clear Find in file to see all ${Math.max(0, tb.rows.length - 1)} rows.`))));
   }
 
   fileBody(t) {
@@ -195,8 +201,11 @@ export default class Files extends View {
       this.openRequest = asked.n;
       if (this.dirty()) this.note = "Save or close the open file first";
       else this.open(this.rel(asked.path), null, cx);
+      if (this.folded) foldPanel(this, "files", false); // folded: open to show it
     }
     const t = theme(), file = this.file, dirty = this.dirty();
+    if (this.folded) return foldedStrip("files", "»", "Show Files", t, () => foldPanel(this, "files", false))
+      .id("my-files").on_size_change(({ width }, cx) => trackWidth(this, width, cx));
     const tool = (id, icon, name, onClick, opts) => iconButton(`files-${id}`, `mods/my-files/icon-${icon}.svg`, name, t, onClick, { iconOnly: !this.wide, ...opts });
     const header = h_flex().h(42).flex_none().px(12).gap(6).items_center().border_b(1).border_color(t.border)
       .when(Boolean(file), el => el.child(tool("back", "back", "Back", (_e, cx) => {
@@ -208,7 +217,8 @@ export default class Files extends View {
       .child(div().flex_1().min_w(0).truncate().text_right().text_size(12).text_color(dirty ? t.blocked : t.dim)
         .child(file ? `${file}${dirty ? " ●" : ""}` : this.root?.split(/[\\/]/).pop() ?? ""))
       .when(!file && Boolean(this.root), el => el.child(tool("sync", "sync", "Sync", (_e, cx) => this.refresh(cx), { enabled: !this.loading, iconOnly: true }))
-        .child(button("files-new", "+", t, (_e, cx) => this.openMenu("", cx), { active: this.menu?.path === "" })));
+        .child(button("files-new", "+", t, (_e, cx) => this.openMenu("", cx), { active: this.menu?.path === "", name: "New file or folder" })))
+      .child(button("files-fold", "«", t, () => foldPanel(this, "files", true), { name: "Hide Files" }));
     // The find box gets a row of its own; too narrow for the names, the buttons show icons only.
     const fileBar = file && v_flex().flex_none().px(10).py(6).gap(6).when(!this.showReplace, el => el.border_b(1).border_color(t.border))
       .child(h_flex().id("files-bar").gap(6).items_center().flex_wrap()
@@ -226,7 +236,7 @@ export default class Files extends View {
       .child(textInput("files-replace-in", this.replaceIn, this.typing === "replace-in", t))
       .child(button("files-replace-one", "Next", t, (_e, cx) => this.replaceOne(cx)))
       .child(button("files-replace-every", "All", t, (_e, cx) => this.replaceEvery(cx)))
-      .child(button("files-replace-close", "×", t, (_e, cx) => { this.showReplace = false; cx.notify(); }));
+      .child(button("files-replace-close", "×", t, (_e, cx) => { this.showReplace = false; cx.notify(); }, { name: "Close replace" }));
     const confirm = this.confirmClose && dirty && h_flex().flex_none().px(10).py(6).gap(6).items_center().bg(t.raised)
       .child(div().flex_1().text_size(12).child("Unsaved changes."))
       .child(button("files-save-close", "Save", t, (_e, cx) => { this.save(cx); this.confirmClose = false; }, { primary: true }))
@@ -235,7 +245,7 @@ export default class Files extends View {
     const results = this.results && v_flex().id("files-results").flex_1().min_h(0).overflow_y_scrollbar().p(6)
       .child(h_flex().px(6).pb(4).gap(6).text_size(11).text_color(t.dim)
         .child(div().flex_1().child(this.results.loading ? "Searching…" : this.results.error ?? `${this.results.rows.length}${this.results.more ? "+" : ""} matches for “${this.results.q}”`))
-        .child(button("files-results-close", "×", t, (_e, cx) => { this.results = null; this.search.set_value(""); cx.notify(); })))
+        .child(button("files-results-close", "×", t, (_e, cx) => { this.results = null; this.search.set_value(""); cx.notify(); }, { name: "Close search" })))
       .children(this.results.rows.map((r, i) => v_flex().id(`hit-${i}`).flex_none().px(8).py(3).rounded(6).cursor_pointer().hover(s => s.bg(t.hover))
         .on_click((_e, cx) => this.open(r.path, { line: r.line, word: this.results.q }, cx))
         .child(h_flex().gap(6).items_center().child(div().flex_1().min_w(0).text_size(11).text_color(t.muted).truncate().child(`${r.path}:${r.line}`))
@@ -252,7 +262,7 @@ export default class Files extends View {
       .when(Boolean(this.error) || !this.entries.get("")?.length, el => el.child(div().p(8).text_size(12).text_color(t.dim).child(this.error || (this.loading ? "Loading files…" : this.root ? "No files" : "No folder"))))
       .when(this.limited, el => el.child(div().p(8).text_size(11).text_color(t.dim).child("File list limited to 500 entries per folder and 5,000 total")));
     return v_flex().id("my-files").size_full().min_h(0).rounded(10).overflow_hidden().bg(t.background).border_1().border_color(t.border).text_color(t.foreground).text_size(13)
-      .track_focus(this.handle).on_key_down((e, cx) => this.key(e, cx))
+      .track_focus(this.handle).on_key_down((e, cx) => this.key(e, cx)).on_size_change(({ width }, cx) => trackWidth(this, width, cx))
       .child(header)
       .when(!file, el => el.child(h_flex().flex_none().px(10).py(6).when(!replaceBar, e => e.border_b(1).border_color(t.border)).child(textInput("files-search", this.search, this.typing === "search", t))))
       .when(!file && Boolean(replaceBar), el => el.child(replaceBar))
