@@ -300,6 +300,28 @@ export const actionsMethods = {
     this.act("Revert", async () => { await this.git(["revert", "--no-edit", ...(c.parents.length > 1 ? ["-m", "1"] : []), c.hash]); return `Reverted ${c.short}`; }, cx);
   },
 
+  // A lightweight tag on a commit (HEAD when no hash is given).
+  newTag(name, hash, cx) {
+    name = (name ?? "").trim();
+    if (!name) { this.tagName.focus(); return; }
+    this.act("Tag", async () => { await this.git(["tag", "--", name, ...(hash ? [hash] : [])]); return `Tagged ${hash ? hash.slice(0, 7) : "HEAD"} ${name}`; },
+      cx, (ok) => { if (ok) this.tagName.set_value(""); });
+  },
+
+  // Asks first. Deletes the tag here only: one already pushed stays on the remote.
+  deleteTag(name, cx) {
+    if (!name) return;
+    if (this.confirm?.tag !== name) { this.confirm = { tag: name }; cx.notify(); return; }
+    this.act("Delete tag", async () => { await this.git(["tag", "-d", "--", name]); return `Deleted tag ${name} (here only)`; }, cx);
+  },
+
+  // To the upstream's remote, else origin (Push leaves tags behind).
+  pushTag(name, cx) {
+    if (!name) return;
+    const remote = this.upstream?.split("/")[0] || "origin";
+    this.act("Push tag", async () => { await this.git(["push", remote, `refs/tags/${name}`], NET); return `Pushed tag ${name} to ${remote}`; }, cx);
+  },
+
   // Asks first. --mixed: the branch moves to c; the later commits leave it, their changes stay in the files.
   reset(c, cx) {
     if (this.confirm?.reset !== c.hash) { this.confirm = { reset: c.hash }; cx.notify(); return; }

@@ -201,6 +201,10 @@ rm -rf "$APP/mods/my-files" "$APP/mods/my-changes" "$APP/layouts/my-herdr.json"
   other branch has asks again as **Force delete**), **Checkout commit** / **Merge**
   for a commit with no branch, **Cherry-pick onto** the current branch, **Revert**,
   **Copy hash**. Double-click opens its changes.
+  Tags: type a name under the actions and **Tag** (or Enter) puts a lightweight tag on
+  that commit. A commit with a tag offers **Push tag** (to the upstream's remote, else
+  `origin`; **Push** doesn't send tags) and **Delete tag** (click twice; it deletes
+  the tag here only, a pushed one stays on the remote).
 
   ![History: the branch graph with branch, remote and tag labels, and the actions for a picked commit](docs/history.png)
 
@@ -229,7 +233,8 @@ or script them: `herdr-app do my-changes.pull`.
   `amend`, `undo` (twice), `ask`, `fetch`, `pull`, `push`, `stash`, `pop`, `abort`,
   `branches`, `checkout:<branch>`, `merge:<branch>`, `new-branch:<name>`,
   `delete-branch:<name>` (twice), `history`, `log-search:<text>`, `pick:<hash>`,
-  `show:<hash>`, `cherry-pick:<hash>`, `revert:<hash>`
+  `show:<hash>`, `cherry-pick:<hash>`, `revert:<hash>`, `tag:<name>[:<hash>]` (HEAD without a hash),
+  `delete-tag:<name>` (twice), `push-tag:<name>`
 
 Example `keys.json` section:
 

@@ -1,4 +1,4 @@
-// Changes: the History graph and a commit's changes.
+// Changes: the History graph, a commit's actions (tags too) and its changes.
 import { div } from "gpui-kit";
 import { v_flex, h_flex } from "gpui-base";
 import { settings } from "herdr";
@@ -84,13 +84,19 @@ export const historyMethods = {
       out.push(button("log-co-commit", "Checkout commit", t, (_e, cx) => this.act("Checkout", async () => { await this.git(["switch", "--detach", c.hash]); return `On ${c.short} (no branch)`; }, cx)));
       danger.push(button("log-merge-commit", `Merge into ${this.branch}`, t, (_e, cx) => this.merge(c.hash, cx)));
     }
+    for (const tag of c.refs.tags) {
+      out.push(button(`log-push-tag-${tag}`, `Push tag ${tag}`, t, (_e, cx) => this.pushTag(tag, cx)));
+      danger.push(button(`log-del-tag-${tag}`, this.confirm?.tag === tag ? `Delete tag ${tag}? click again` : `Delete tag ${tag}`, t, (_e, cx) => this.deleteTag(tag, cx), { danger: true }));
+    }
     if (!c.refs.head) danger.push(button("log-cherry", `Cherry-pick onto ${this.branch}`, t, (_e, cx) => this.cherryPick(c.hash, cx)));
     danger.push(button("log-revert", "Revert", t, (_e, cx) => this.revert(c, cx)));
     // Not mid merge/cherry-pick/revert: a reset there drops it and leaves the conflict markers.
     if (!c.refs.head && this.branch && !this.inProgress) danger.push(button("log-reset", this.confirm?.reset === c.hash ? `Reset ${this.branch} here? click again` : `Reset ${this.branch} here`, t,
       (_e, cx) => this.reset(c, cx), { danger: true }));
     return [button("log-view", "View changes", t, (_e, cx) => this.showCommit(c.hash, cx)), ...out,
-      button("log-copy", "Copy hash", t, (_e, cx) => { cx.write_to_clipboard(c.hash); this.note = { text: `Copied ${c.short}` }; cx.notify(); }), ...danger];
+      button("log-copy", "Copy hash", t, (_e, cx) => { cx.write_to_clipboard(c.hash); this.note = { text: `Copied ${c.short}` }; cx.notify(); }), ...danger,
+      h_flex().gap(6).pt(2).child(textInput("tag-input", this.tagName, this.typing === "tag", t))
+        .child(button("tag-create", "Tag", t, (_e, cx) => this.newTag(this.tagName.value(), c.hash, cx), { primary: true }))];
   },
 
   showCommit(hash, cx) {
@@ -158,7 +164,7 @@ export const historyMethods = {
           ? [row(r), v_flex().id("log-menu").flex_none().mx(6).px(8).py(4).gap(2).items_start().rounded(6).bg(t.raised)
             .on_mouse_down("left", (_e, cx) => cx.stop_propagation())
             // A press anywhere else closes it; a right-click on a row then opens that row's menu.
-            .on_mouse_down_out((_e, cx) => { this.riskyFor = null; this.confirm = null; cx.notify(); }).children(this.logActions(r, t))]
+            .on_mouse_down_out((_e, cx) => { this.riskyFor = null; this.confirm = null; cx.notify(); }).children(this.logActions(r, t).map((b) => b.w_full()))]
           : [row(r)]))
         .when(rows.length > this.logShown, (e) => e.child(h_flex().flex_none().p(8).justify_center()
           .child(button("log-more", `Show ${Math.min(LOG_PAGE, rows.length - this.logShown)} more (${rows.length - this.logShown} left)`, t,

@@ -1,7 +1,7 @@
 // Changes: git status of the focused pane's repo. Unstaged and staged
 // lists; stage files, hunks or single lines; discard, commit, amend, undo commit, ask
 // the chat for a message; branches, merge, fetch/pull/push, stash; the history graph
-// with checkout, merge, cherry-pick, revert and branch delete.
+// with checkout, merge, cherry-pick, revert, branch delete and tags.
 import { View, div } from "gpui-kit";
 import { v_flex, h_flex, InputState } from "gpui-base";
 import { exec, readTextFile, theme, nextCommand } from "herdr";
@@ -24,9 +24,11 @@ export default class Changes extends View {
     this.message.on("change", (_e, cx) => { const has = Boolean(this.message.value().trim()); if (has !== this.hasMessage) { this.hasMessage = has; cx.notify(); } });
     this.branchName = InputState.new({ placeholder: "New branch name" });
     this.branchName.on("submit", (_e, cx) => this.newBranch(cx));
+    this.tagName = InputState.new({ placeholder: "New tag name" });
+    this.tagName.on("submit", (_e, cx) => this.riskyFor && this.newTag(this.tagName.value(), this.riskyFor, cx)); // on the commit whose menu is open
     this.logSearch = InputState.new({ placeholder: "Search commits (message, hash, author, branch)" });
     this.logSearch.on("change", (_e, cx) => { this.logQuery = this.logSearch.value().trim().toLowerCase(); this.logShown = LOG_PAGE; cx.notify(); });
-    for (const [state, name] of [[this.message, "message"], [this.branchName, "branch"], [this.logSearch, "log"]]) {
+    for (const [state, name] of [[this.message, "message"], [this.branchName, "branch"], [this.tagName, "tag"], [this.logSearch, "log"]]) {
       state.on("focus", (_e, cx) => { this.typing = name; cx.notify(); });
       state.on("blur", (_e, cx) => { this.typing = null; cx.notify(); });
     }
@@ -69,6 +71,10 @@ export default class Changes extends View {
       "new-branch": () => { this.branchName.set_value(arg); this.newBranch(cx); },
       "delete-branch": () => this.deleteBranch(arg, cx),
       "cherry-pick": () => this.cherryPick(arg, cx),
+      // tag:<name> on HEAD, tag:<name>:<hash> on that commit (a tag name can't hold ":")
+      tag: () => { const [n, h] = arg.split(":"); this.newTag(n, h, cx); },
+      "delete-tag": () => this.deleteTag(arg, cx), // twice
+      "push-tag": () => this.pushTag(arg, cx),
       // An empty hash would match every commit: the newest would be reverted.
       revert: () => { const c = arg && this.log?.find((r) => r.hash.startsWith(arg)); if (c) this.revert(c, cx); },
       history: () => this.openLog(cx),
