@@ -205,6 +205,8 @@ rm -rf "$APP/mods/my-files" "$APP/mods/my-changes" "$APP/layouts/my-herdr.json"
   other branch has asks again as **Force delete**), **Checkout commit** / **Merge**
   for a commit with no branch, **Cherry-pick onto** the current branch, **Revert**,
   **Copy hash**. Double-click opens its changes.
+  Under the actions, type a name and **Branch** (or Enter) creates a branch at that
+  commit and switches to it.
   Tags: type a name under the actions and **Tag** (or Enter) puts a lightweight tag on
   that commit. A commit with a tag offers **Push tag** (to the upstream's remote, else
   `origin`; **Push** doesn't send tags) and **Delete tag** (click twice; it deletes
@@ -235,7 +237,7 @@ or script them: `herdr-app do my-changes.pull`.
   `select:unstaged:<path>`), `stage`, `stage-all`, `unstage-all`, `hunk:<n>`,
   `discard-hunk:<n>` (twice), `line:<hunk>:<line>`, `discard`, `open`, `ours`, `theirs`, `commit[:<message>]`,
   `amend`, `undo` (twice), `ask`, `fetch`, `pull`, `push`, `stash`, `pop`, `abort`,
-  `branches`, `checkout:<branch>`, `merge:<branch>`, `new-branch:<name>`,
+  `branches`, `checkout:<branch>`, `merge:<branch>`, `new-branch:<name>[:<hash>]`,
   `delete-branch:<name>` (twice), `history`, `log-search:<text>`, `pick:<hash>`,
   `show:<hash>`, `cherry-pick:<hash>`, `revert:<hash>`, `tag:<name>[:<hash>]` (HEAD without a hash),
   `delete-tag:<name>` (twice), `push-tag:<name>`

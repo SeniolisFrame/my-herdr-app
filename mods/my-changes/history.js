@@ -95,8 +95,10 @@ export const historyMethods = {
       (_e, cx) => this.reset(c, cx), { danger: true }));
     return [button("log-view", "View changes", t, (_e, cx) => this.showCommit(c.hash, cx)), ...out,
       button("log-copy", "Copy hash", t, (_e, cx) => { cx.write_to_clipboard(c.hash); this.note = { text: `Copied ${c.short}` }; cx.notify(); }), ...danger,
-      h_flex().gap(6).pt(2).child(textInput("tag-input", this.tagName, this.typing === "tag", t))
-        .child(button("tag-create", "Tag", t, (_e, cx) => this.newTag(this.tagName.value(), c.hash, cx), { primary: true }))];
+      h_flex().gap(6).pt(2).child(textInput("log-branch-input", this.logBranch, this.typing === "log-branch", t))
+        .child(button("log-branch-create", "Branch", t, (_e, cx) => this.newBranch(cx, this.logBranch, c.hash), { primary: true }).w(72).justify_center()),
+      h_flex().gap(6).child(textInput("tag-input", this.tagName, this.typing === "tag", t))
+        .child(button("tag-create", "Tag", t, (_e, cx) => this.newTag(this.tagName.value(), c.hash, cx), { primary: true }).w(72).justify_center())];
   },
 
   showCommit(hash, cx) {

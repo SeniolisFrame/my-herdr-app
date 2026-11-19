@@ -269,11 +269,13 @@ export const actionsMethods = {
     this.act("Merge", async () => { await this.git(["merge", "--no-edit", branch], NET); return `Merged ${branch}`; }, cx);
   },
 
-  newBranch(cx) {
-    const name = this.branchName.value().trim();
-    if (!name) return;
+  // Creates a branch from HEAD (or from the commit `from`) and switches to it.
+  newBranch(cx, input = this.branchName, from) {
+    const name = input.value().trim();
+    if (!name) { input.focus(); return; }
     this.menu = null;
-    this.act("New branch", async () => { await this.git(["switch", "-c", name]); return `Created ${name}`; }, cx, () => this.branchName.set_value(""));
+    this.act("New branch", async () => { await this.git(["switch", "-c", name, ...(from ? [from] : [])]); return `Created ${name}${from ? ` at ${from.slice(0, 7)}` : ""}`; },
+      cx, (ok) => { if (ok) input.set_value(""); });
   },
 
   // Asks first. A branch with commits no other branch has is refused; its button then

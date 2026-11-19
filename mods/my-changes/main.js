@@ -24,11 +24,13 @@ export default class Changes extends View {
     this.message.on("change", (_e, cx) => { const has = Boolean(this.message.value().trim()); if (has !== this.hasMessage) { this.hasMessage = has; cx.notify(); } });
     this.branchName = InputState.new({ placeholder: "New branch name" });
     this.branchName.on("submit", (_e, cx) => this.newBranch(cx));
+    this.logBranch = InputState.new({ placeholder: "New branch name" });
+    this.logBranch.on("submit", (_e, cx) => this.riskyFor && this.newBranch(cx, this.logBranch, this.riskyFor)); // at the commit whose menu is open
     this.tagName = InputState.new({ placeholder: "New tag name" });
     this.tagName.on("submit", (_e, cx) => this.riskyFor && this.newTag(this.tagName.value(), this.riskyFor, cx)); // on the commit whose menu is open
     this.logSearch = InputState.new({ placeholder: "Search commits (message, hash, author, branch)" });
     this.logSearch.on("change", (_e, cx) => { this.logQuery = this.logSearch.value().trim().toLowerCase(); this.logShown = LOG_PAGE; cx.notify(); });
-    for (const [state, name] of [[this.message, "message"], [this.branchName, "branch"], [this.tagName, "tag"], [this.logSearch, "log"]]) {
+    for (const [state, name] of [[this.message, "message"], [this.branchName, "branch"], [this.logBranch, "log-branch"], [this.tagName, "tag"], [this.logSearch, "log"]]) {
       state.on("focus", (_e, cx) => { this.typing = name; cx.notify(); });
       state.on("blur", (_e, cx) => { this.typing = null; cx.notify(); });
     }
@@ -68,7 +70,8 @@ export default class Changes extends View {
       branches: () => this.openBranches(cx),
       checkout: () => this.checkout(arg, undefined, cx),
       merge: () => this.merge(arg, cx),
-      "new-branch": () => { this.branchName.set_value(arg); this.newBranch(cx); },
+      // new-branch:<name> from HEAD, new-branch:<name>:<hash> from that commit (a branch name can't hold ":")
+      "new-branch": () => { const [n, h] = arg.split(":"); this.branchName.set_value(n); this.newBranch(cx, this.branchName, h); },
       "delete-branch": () => this.deleteBranch(arg, cx),
       "cherry-pick": () => this.cherryPick(arg, cx),
       // tag:<name> on HEAD, tag:<name>:<hash> on that commit (a tag name can't hold ":")
@@ -109,8 +112,9 @@ export default class Changes extends View {
     if (context !== this.context) {
       // Each workspace's last lists and diff show at once when it comes back; the refresh below updates them.
       if (this.context && this.root) {
-        const { root, gitDir, on, top, files, branch, upstream, track, hasHead, inProgress, limited, diffs, changed, sel, rows, raw, branches, commits, log, logRoot } = this;
-        this.saved.set(this.context, { root, gitDir, on, top, files, branch, upstream, track, hasHead, inProgress, limited, diffs, changed, sel, rows, raw, branches, commits, log, logRoot });
+        const { root, gitDir, on, top, files, branch, upstream, track, hasHead, inProgress, limited, diffs, changed, sel, rows, raw, branches, commits, log, logRoot, askFile, askLast } = this;
+        // askFile: a message asked of the chat here still lands in the box when this place shows again.
+        this.saved.set(this.context, { root, gitDir, on, top, files, branch, upstream, track, hasHead, inProgress, limited, diffs, changed, sel, rows, raw, branches, commits, log, logRoot, askFile, askLast });
       }
       this.context = context; this.root = null; this.files = []; this.sel = null; this.setLines([], "");
       this.error = null; this.note = null; this.watched = null; this.watchToken = null; this.view = "changes"; this.menu = null; this.confirm = null;
