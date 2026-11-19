@@ -85,7 +85,7 @@ export const viewMethods = {
     const onLog = this.view !== "changes" && !this.menu;
     // » on the edge next to the chat, as Files' « is: both fold buttons sit where the eye is.
     return h_flex().h(40).flex_none().border_b(1).border_color(t.border)
-      .child(div().flex_none().pl(8).flex().items_center().child(button("changes-fold", "»", t, () => foldPanel(this, "changes", true), { name: "Hide Changes" })))
+      .child(div().flex_none().px(8).flex().items_center().border_r(1).border_color(t.border).child(button("changes-fold", "»", t, () => foldPanel(this, "changes", true), { name: "Hide Changes" })))
       .child(tab("changes", "Changes", !onLog, (_e, cx) => { this.view = "changes"; this.menu = null; cx.notify(); }, count))
       .child(tab("history", "History", onLog, (_e, cx) => { this.menu = null; if (this.view === "changes") this.openLog(cx); else { this.view = "log"; cx.notify(); } }));
   },
