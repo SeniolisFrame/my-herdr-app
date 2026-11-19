@@ -5,7 +5,7 @@
 import { View, div } from "gpui-kit";
 import { v_flex, h_flex, InputState } from "gpui-base";
 import { exec, readTextFile, theme, nextCommand } from "herdr";
-import { location, locationKey, READ, git, toLines, watchWhile, sendToChat, focusChat, untab, diffRows, button, foldPanel, trackWidth, foldedStrip } from "./common.js";
+import { location, locationKey, READ, git, toLines, watchWhile, sendToChat, focusChat, untab, diffRows, button, foldPanel, trackWidth, foldedStrip, confirmButton } from "./common.js";
 import { splitDiff } from "./patch.js";
 import { MAX_FILES, MAX_LINES, PREFETCH_LINES, LOG_PAGE, IN_PROGRESS, sides } from "./status.js";
 import { actionsMethods } from "./actions.js";
@@ -91,7 +91,7 @@ export default class Changes extends View {
       history: () => this.openLog(cx),
       "log-search": () => { this.logSearch.set_value(arg); this.logQuery = arg.toLowerCase(); },
       show: () => this.showCommit(arg, cx),
-      pick: () => { this.picked = this.riskyFor = (arg && this.log?.find((r) => r.hash.startsWith(arg)))?.hash ?? null; if (this.picked) this.readCommit(this.picked, cx); },
+      pick: () => { this.logName = null; this.picked = this.riskyFor = (arg && this.log?.find((r) => r.hash.startsWith(arg)))?.hash ?? null; if (this.picked) this.readCommit(this.picked, cx); },
     }[name];
     run?.();
   }
@@ -332,10 +332,10 @@ export default class Changes extends View {
         f ? h_flex().flex_none().px(10).py(4).gap(6).items_center().border_t(1).border_b(1).border_color(t.border)
           .child(div().flex_1().min_w(0).truncate().text_size(12).font_semibold().child(`${f.path}${item.side === "staged" ? " (staged)" : ""}`))
           .child(button("open", "Open", t, () => this.openInFiles(f.path)))
-          .when(f.conflict, (e) => e.child(button("ours", "Ours", t, (_e, cx) => this.resolve(f, "ours", cx)))
-            .child(button("theirs", "Theirs", t, (_e, cx) => this.resolve(f, "theirs", cx)))
+          .when(f.conflict, (e) => e.child(button("ours", "Ours", t, (_e, cx) => this.resolve(f, "ours", cx), { name: "Use your version of the whole file" }))
+            .child(button("theirs", "Theirs", t, (_e, cx) => this.resolve(f, "theirs", cx), { name: "Use the incoming version of the whole file" }))
             .child(button("resolved", "Mark resolved", t, (_e, cx) => this.toggleFile(item, cx))))
-          .when(!f.conflict, (e) => e.child(button("discard", this.confirm?.path === f.path ? "Discard? click again" : "Discard", t, (_e, cx) => this.discard(f, cx), { danger: true })))
+          .when(!f.conflict, (e) => e.child(confirmButton("discard", "Discard", this.confirm?.path === f.path, t, (_e, cx) => this.discard(f, cx))))
           : div().flex_1(),
         this.diffView("changes-diff", this.rows, t, true)];
     return v_flex().id("my-changes").size_full().min_h(0).rounded(10).overflow_hidden().bg(t.background).border_1().border_color(t.border).text_color(t.foreground).text_size(13)

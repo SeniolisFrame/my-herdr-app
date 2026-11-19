@@ -3,7 +3,7 @@
 import { View, div, svg, image } from "gpui-kit";
 import { v_flex, h_flex, Editor, InputState } from "gpui-base";
 import { theme, settings, nextCommand, shared } from "herdr";
-import { locationKey, focusChat, diffRow, button, iconButton, buttonGroup, textInput, lazyRows, foldPanel, trackWidth, foldedStrip } from "./common.js";
+import { locationKey, focusChat, diffRow, button, iconButton, buttonGroup, textInput, lazyRows, foldPanel, trackWidth, foldedStrip, menuBox } from "./common.js";
 import { TOTAL } from "./tree.js";
 import { iconFor } from "./icons.js";
 import { treeMethods } from "./tree.js";
@@ -120,7 +120,7 @@ export default class Files extends View {
         .child(image(iconFor(entry.name, entry.dir, open)).size(16).flex_none())
         .child(div().flex_1().min_w(0).truncate().child(entry.name))
         .when(Boolean(mark), el => el.child(div().text_size(11).text_color(mark === "A" ? t.ansi2 : mark === "D" || mark === "U" ? t.ansi1 : t.blocked).child(mark))));
-      if (this.menu?.path === path) out.push(this.menuRow(depth, t));
+      if (this.menu?.path === path) out.push(this.menuRow(t));
       if (entry.dir && open) this.treeRows(path, depth + 1, out, t);
     }
     return out;
@@ -164,9 +164,8 @@ export default class Files extends View {
           if (p && b) { this.codeMenu = { x: Math.max(0, Math.min(p.x, b.width - 150)), y: Math.max(0, Math.min(p.y, b.height - 40)) }; cx.notify(); }
         })
         .child(Editor.new(this.code).flex_1().min_h(0))
-        .when(Boolean(m), (el) => el.child(v_flex().id("code-menu").absolute().left(m.x).top(m.y).p(4).rounded(6).bg(t.raised).border_1().border_color(t.border)
-          .on_mouse_down_out((_e, cx) => { this.codeMenu = null; cx.notify(); })
-          .child(iconButton("code-send", "mods/my-files/icon-chat.svg", "Send to chat", t, (_e, cx) => this.sendCode(cx)))));
+        .when(Boolean(m), (el) => el.child(menuBox("code-menu", t, [iconButton("code-send", "mods/my-files/icon-chat.svg", "Send to chat", t, (_e, cx) => this.sendCode(cx))],
+          (cx) => { this.codeMenu = null; cx.notify(); }).absolute().left(m.x).top(m.y)));
     }
     const font = settings().font_family ?? "JetBrains Mono";
     if (this.mode === "table" && this.table) return this.tableView(t, font);
@@ -176,7 +175,8 @@ export default class Files extends View {
       return lazyRows("files-blame", rows.length, (i) => {
         const r = rows[i], first = rows[i - 1]?.hash !== r.hash;
         return h_flex().w_full().h(20).flex_none().gap(8).px(6).cursor_pointer().hover(s => s.bg(t.hover))
-          .child(div().w(160).flex_none().truncate().text_color(first ? t.muted : t.background).child(/^0+$/.test(r.hash) ? "not committed" : `${r.hash.slice(0, 7)} ${r.date} ${r.author}`))
+          // Narrow: the hash only, so the code keeps its room.
+          .child(div().w(this.wide ? 160 : 60).flex_none().truncate().text_color(first ? t.muted : t.background).child(/^0+$/.test(r.hash) ? (this.wide ? "not committed" : "—") : this.wide ? `${r.hash.slice(0, 7)} ${r.date} ${r.author}` : r.hash.slice(0, 7)))
           .child(div().w(36).flex_none().text_right().text_color(t.dim).child(String(r.line)))
           .child(div().flex_1().min_w(0).truncate().child(r.text));
       }, { font, click: (i, cx) => { if (!/^0+$/.test(rows[i].hash)) this.showCommit(rows[i].hash, cx); } });
@@ -251,14 +251,15 @@ export default class Files extends View {
         .child(h_flex().gap(6).items_center().child(div().flex_1().min_w(0).text_size(11).text_color(t.muted).truncate().child(`${r.path}:${r.line}`))
           .child(button(`hit-replace-${i}`, "Replace", t, (_e, cx) => this.replaceHits([r], cx), { enabled: !this.replacing })))
         .child(div().text_size(12).truncate().font_family(settings().font_family ?? "JetBrains Mono").child(r.text))));
+    const hitFiles = this.results ? new Set(this.results.rows.map((r) => r.path)).size : 0;
     const replaceBar = this.results && !this.results.loading && this.results.rows.length > 0 && h_flex().flex_none().px(10).pb(6).gap(6).items_center().border_b(1).border_color(t.border)
       .child(textInput("files-replace", this.replaceWith, this.typing === "replace", t))
-      .child(button("files-replace-all", this.replacing ? "Replacing…" : `Replace all (${new Set(this.results.rows.map((r) => r.path)).size} files)`, t,
+      .child(button("files-replace-all", this.replacing ? "Replacing…" : `Replace all (${hitFiles} file${hitFiles === 1 ? "" : "s"})`, t,
         (_e, cx) => this.replaceHits(this.results.rows, cx), { primary: true, enabled: !this.replacing }));
     const tree = v_flex().id("files-tree").flex_1().min_h(0).overflow_y_scrollbar().p(6)
       // A click anywhere in the tree (a row too) closes an open menu; the menu row stops its own clicks.
       .on_mouse_down("left", (_e, cx) => { if (this.menu) { this.menu = null; this.nameAction = null; cx.notify(); } })
-      .when(this.menu?.path === "", el => el.child(this.menuRow(0, t))).children(this.treeRows("", 0, [], t))
+      .when(this.menu?.path === "", el => el.child(this.menuRow(t))).children(this.treeRows("", 0, [], t))
       .when(Boolean(this.error) || !this.entries.get("")?.length, el => el.child(div().p(8).text_size(12).text_color(t.dim).child(this.error || (this.loading ? "Loading files…" : this.root ? "No files" : "No folder"))))
       .when(this.limited, el => el.child(div().p(8).text_size(11).text_color(t.dim).child("File list limited to 500 entries per folder and 5,000 total")));
     return v_flex().id("my-files").size_full().min_h(0).rounded(10).overflow_hidden().bg(t.background).border_1().border_color(t.border).text_color(t.foreground).text_size(13)

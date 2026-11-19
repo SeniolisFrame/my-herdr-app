@@ -66,6 +66,10 @@ export const editorMethods = {
 
   // pos: { line } (1-based); { line, word } also selects that word on the line.
   open(path, pos, cx) {
+    // Another file: a Find (or a table filter) from the last one would hide this one. The same
+    // file opened again (a workspace switch back, which closes it first) keeps it.
+    if (path !== this.findFor) { this.find.set_value(""); this.showReplace = false; }
+    this.findFor = path;
     this.close(); this.file = path;
     if (!cx) return;
     const context = this.context, full = this.full(path), on = this.on;

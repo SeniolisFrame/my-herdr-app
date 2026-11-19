@@ -66,13 +66,16 @@ export const untab = (text) => text.replace(/[^\t]*\t/g, (s) => s.slice(0, -1).p
 
 // Numbers each diff line; `hunk` is the hunk's index within its file and `pos` a
 // line's place in that hunk's body (what patch.js someLines counts).
+// In a file's header (between "diff --git" and its first @@) the index / --- / +++ lines are
+// left out: the file row already names the file. Mode, rename and binary lines stay.
 export function diffRows(lines) {
-  let old = 0, next = 0, hunk = -1, pos = -1, inHunk = false;
-  return lines.map((line) => {
-    if (line.startsWith("diff --git ")) { hunk = -1; inHunk = false; return { kind: "file", text: line.replace(/^diff --git a\/(.*) b\/.*$/, "$1") }; }
+  let old = 0, next = 0, hunk = -1, pos = -1, inHunk = false, inHeader = false;
+  return lines.flatMap((line) => {
+    if (line.startsWith("diff --git ")) { hunk = -1; inHunk = false; inHeader = true; return { kind: "file", text: line.replace(/^diff --git a\/(.*) b\/.*$/, "$1") }; }
     const match = /^@@ -(\d+)(?:,\d+)? \+(\d+)/.exec(line);
-    if (match) { old = +match[1]; next = +match[2]; hunk++; pos = -1; inHunk = true; return { kind: "@", hunk, text: line }; }
+    if (match) { old = +match[1]; next = +match[2]; hunk++; pos = -1; inHunk = true; inHeader = false; return { kind: "@", hunk, text: line }; }
     const kind = line[0];
+    if (inHeader && /^(index |--- |\+\+\+ )/.test(line)) return [];
     if (!inHunk) return { kind: "", text: line };
     if (kind === "-") return { kind, hunk, pos: ++pos, number: old++, text: untab(line.slice(1)) || " " };
     if (kind === "+") return { kind, hunk, pos: ++pos, number: next++, text: untab(line.slice(1)) || " " };
@@ -127,6 +130,40 @@ export function trackWidth(view, width, cx) {
 export function foldedStrip(id, label, name, t, onOpen) {
   return v_flex().size_full().items_center().pt(8).rounded(10).bg(t.background).border_1().border_color(t.border)
     .child(button(`${id}-unfold`, label, t, onOpen, { name }));
+}
+
+// A pop-up menu: one item per line, each as wide as the menu. Where it sits is the caller's
+// (under a row, or .absolute() at the pointer). onClose(cx): a press anywhere outside it.
+export function menuBox(id, t, items, onClose) {
+  return v_flex().id(id).flex_none().p(4).gap(2).items_start().rounded(6).bg(t.raised).border_1().border_color(t.border)
+    .on_mouse_down("left", (_e, cx) => cx.stop_propagation())
+    .when(Boolean(onClose), (e) => e.on_mouse_down_out((_e, cx) => onClose(cx)))
+    .children(items.map((b) => b.w_full()));
+}
+
+// Naming something new (a file, a branch, a tag): a label that says what and where (it stays
+// while typing, a placeholder would not), the box, Create and Cancel. Enter is the input's
+// own submit, set where the InputState is made.
+export function nameForm(id, t, label, input, focused, createLabel, onCreate, onCancel) {
+  return v_flex().gap(4)
+    .child(div().text_size(11).text_color(t.dim).child(label))
+    .child(h_flex().gap(6).items_center().flex_wrap()
+      .child(textInput(`${id}-input`, input, focused, t).min_w(120)) // fills the row; the buttons wrap under it when narrow
+      .child(button(`${id}-ok`, createLabel, t, onCreate, { primary: true }))
+      .child(button(`${id}-cancel`, "Cancel", t, onCancel)));
+}
+
+// A check box (16px): ✓ when checked, ! when warn (a conflict). Its clicks are the caller's.
+export function checkbox(checked, t, warn = false, enabled = true) {
+  return div().w(16).h(16).flex_none().flex().items_center().justify_center().rounded(4).border_1().text_size(11)
+    .border_color(!enabled ? t.dim : warn ? t.ansi1 : t.accent).bg(checked ? t.accent : t.background)
+    .text_color(checked ? t.accent_foreground : t.ansi1).child(checked ? "✓" : warn ? "!" : "");
+}
+
+// A button that asks first: asking (after its first click) it reads "<label>? click again"
+// (opts.ask: a shorter word for that) in red. opts as button; opts.danger overrides the red.
+export function confirmButton(id, label, asking, t, onClick, opts = {}) {
+  return button(id, asking ? `${opts.ask ?? label}? click again` : label, t, onClick, { danger: true, ...opts });
 }
 
 // A small text button. opts.name: what it does, for a button whose label is an icon or a

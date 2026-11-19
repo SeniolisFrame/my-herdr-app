@@ -18,7 +18,7 @@ Both panels follow the focused pane's folder. These are native herdr-app panels
 in a real editor.
 
 > [!WARNING]
-> ⚠️ **All the code in this repo was written by AI (Claude Code).**
+> **All the code in this repo was written by AI (Claude Code).**
 > Read it before you rely on it, and use it at your own risk.
 
 ## Install
@@ -205,9 +205,9 @@ rm -rf "$APP/mods/my-files" "$APP/mods/my-changes" "$APP/layouts/my-herdr.json"
   other branch has asks again as **Force delete**), **Checkout commit** / **Merge**
   for a commit with no branch, **Cherry-pick onto** the current branch, **Revert**,
   **Copy hash**. Double-click opens its changes.
-  Under the actions, type a name and **Branch** (or Enter) creates a branch at that
-  commit and switches to it.
-  Tags: type a name under the actions and **Tag** (or Enter) puts a lightweight tag on
+  **New branch here…** asks for a name (as Files' New file does) and **Create** (or
+  Enter) makes a branch at that commit and switches to it.
+  **New tag here…** does the same for a lightweight tag on
   that commit. A commit with a tag offers **Push tag** (to the upstream's remote, else
   `origin`; **Push** doesn't send tags) and **Delete tag** (click twice; it deletes
   the tag here only, a pushed one stays on the remote).

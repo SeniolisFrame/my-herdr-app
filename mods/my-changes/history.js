@@ -2,7 +2,7 @@
 import { div } from "gpui-kit";
 import { v_flex, h_flex } from "gpui-base";
 import { settings } from "herdr";
-import { READ, git, toLines, diffRows, button, textInput } from "./common.js";
+import { READ, git, toLines, diffRows, button, textInput, menuBox, nameForm, confirmButton } from "./common.js";
 import { layoutGraph } from "./graph.js";
 import { MAX_LINES, LOG_PAGE } from "./status.js";
 
@@ -71,14 +71,22 @@ export const historyMethods = {
 
   // What the picked commit offers, only after a right-click: none sit one stray click away.
   logActions(c, t) {
+    // New branch here… / New tag here… open their name box in place of the items, as Files'
+    // New file does; the box belongs to this commit (another commit's menu shows its items).
+    if (this.logName?.hash === c.hash) {
+      const branch = this.logName.kind === "branch", input = branch ? this.logBranch : this.tagName;
+      return [nameForm("log-name", t, `New ${branch ? "branch" : "tag"} at ${c.short}`, input, this.typing === (branch ? "log-branch" : "tag"), "Create",
+        (_e, cx) => (branch ? this.newBranch(cx, input, c.hash) : this.newTag(input.value(), c.hash, cx)), (_e, cx) => { this.logName = null; cx.notify(); })];
+    }
+    const nameIt = (kind, input) => (_e, cx) => { this.logName = { kind, hash: c.hash }; input.set_value(""); input.focus(); cx.notify(); };
     const out = [], danger = [];
     const branches = [...c.refs.local.map((b) => [b, false]), ...c.refs.remote.filter((r) => !c.refs.local.includes(r.replace(/^[^/]+\//, ""))).map((b) => [b, true])];
     for (const [b, remote] of branches) {
       if (b === this.branch) continue;
       out.push(button(`log-co-${b}`, `Checkout ${b}`, t, (_e, cx) => this.checkout(b, remote, cx)));
       danger.push(button(`log-merge-${b}`, `Merge ${b} into ${this.branch}`, t, (_e, cx) => this.merge(b, cx)));
-      const del = this.confirm?.branch === b ? (this.confirm.force ? `Force delete ${b}` : `Delete ${b}? click again`) : `Delete ${b}`;
-      if (!remote) danger.push(button(`log-del-${b}`, del, t, (_e, cx) => this.deleteBranch(b, cx), { danger: true }));
+      const force = this.confirm?.branch === b && this.confirm.force; // refused once: its button drops those commits
+      if (!remote) danger.push(confirmButton(`log-del-${b}`, `${force ? "Force delete" : "Delete"} ${b}`, this.confirm?.branch === b && !force, t, (_e, cx) => this.deleteBranch(b, cx)));
     }
     if (!branches.length && !c.refs.head) {
       out.push(button("log-co-commit", "Checkout commit", t, (_e, cx) => this.act("Checkout", async () => { await this.git(["switch", "--detach", c.hash]); return `On ${c.short} (no branch)`; }, cx)));
@@ -86,19 +94,15 @@ export const historyMethods = {
     }
     for (const tag of c.refs.tags) {
       out.push(button(`log-push-tag-${tag}`, `Push tag ${tag}`, t, (_e, cx) => this.pushTag(tag, cx)));
-      danger.push(button(`log-del-tag-${tag}`, this.confirm?.tag === tag ? `Delete tag ${tag}? click again` : `Delete tag ${tag}`, t, (_e, cx) => this.deleteTag(tag, cx), { danger: true }));
+      danger.push(confirmButton(`log-del-tag-${tag}`, `Delete tag ${tag}`, this.confirm?.tag === tag, t, (_e, cx) => this.deleteTag(tag, cx)));
     }
     if (!c.refs.head) danger.push(button("log-cherry", `Cherry-pick onto ${this.branch}`, t, (_e, cx) => this.cherryPick(c.hash, cx)));
     danger.push(button("log-revert", "Revert", t, (_e, cx) => this.revert(c, cx)));
     // Not mid merge/cherry-pick/revert: a reset there drops it and leaves the conflict markers.
-    if (!c.refs.head && this.branch && !this.inProgress) danger.push(button("log-reset", this.confirm?.reset === c.hash ? `Reset ${this.branch} here? click again` : `Reset ${this.branch} here`, t,
-      (_e, cx) => this.reset(c, cx), { danger: true }));
+    if (!c.refs.head && this.branch && !this.inProgress) danger.push(confirmButton("log-reset", `Reset ${this.branch} here`, this.confirm?.reset === c.hash, t, (_e, cx) => this.reset(c, cx)));
     return [button("log-view", "View changes", t, (_e, cx) => this.showCommit(c.hash, cx)), ...out,
-      button("log-copy", "Copy hash", t, (_e, cx) => { cx.write_to_clipboard(c.hash); this.note = { text: `Copied ${c.short}` }; cx.notify(); }), ...danger,
-      h_flex().gap(6).pt(2).child(textInput("log-branch-input", this.logBranch, this.typing === "log-branch", t))
-        .child(button("log-branch-create", "Branch", t, (_e, cx) => this.newBranch(cx, this.logBranch, c.hash), { primary: true }).w(72).justify_center()),
-      h_flex().gap(6).child(textInput("tag-input", this.tagName, this.typing === "tag", t))
-        .child(button("tag-create", "Tag", t, (_e, cx) => this.newTag(this.tagName.value(), c.hash, cx), { primary: true }).w(72).justify_center())];
+      button("log-copy", "Copy hash", t, (_e, cx) => { cx.write_to_clipboard(c.hash); this.note = { text: `Copied ${c.short}` }; cx.notify(); }),
+      button("log-new-branch", "New branch here…", t, nameIt("branch", this.logBranch)), button("log-new-tag", "New tag here…", t, nameIt("tag", this.tagName)), ...danger];
   },
 
   showCommit(hash, cx) {
@@ -143,7 +147,7 @@ export const historyMethods = {
       return h_flex().id(`log-${r.hash}`).w_full().h(ROW).flex_none().pr(10).gap(6).items_center().cursor_pointer()
         .when(this.picked === r.hash, (e) => e.bg(t.selected)).hover((s) => s.bg(t.hover))
         .on_click((e, cx) => { if (e.click_count > 1) this.showCommit(r.hash, cx); else { this.picked = r.hash; this.riskyFor = null; this.confirm = null; this.readCommit(r.hash, cx); cx.notify(); } })
-        .on_mouse_down("right", (_e, cx) => { this.picked = this.riskyFor = r.hash; this.confirm = null; cx.notify(); })
+        .on_mouse_down("right", (_e, cx) => { this.picked = this.riskyFor = r.hash; this.confirm = null; this.logName = null; cx.notify(); })
         .when(!q, (e) => e.child(div().relative().flex_none().w(width).h(ROW).overflow_hidden()
           .children(r.top.filter(shown).map((l) => graphLine(l, "top", paint)))
           .children(r.bottom.filter(shown).map((l) => graphLine(l, "bottom", paint)))
@@ -163,10 +167,8 @@ export const historyMethods = {
       // The right-clicked commit's actions open in a row just under it, like the Files menu.
       v_flex().id("log").flex_1().min_h(0).overflow_y_scrollbar().text_size(12)
         .children(rows.slice(0, this.logShown).flatMap((r) => r.hash === this.riskyFor && picked?.hash === r.hash
-          ? [row(r), v_flex().id("log-menu").flex_none().mx(6).px(8).py(4).gap(2).items_start().rounded(6).bg(t.raised)
-            .on_mouse_down("left", (_e, cx) => cx.stop_propagation())
-            // A press anywhere else closes it; a right-click on a row then opens that row's menu.
-            .on_mouse_down_out((_e, cx) => { this.riskyFor = null; this.confirm = null; cx.notify(); }).children(this.logActions(r, t).map((b) => b.w_full()))]
+          // A press anywhere else closes it; a right-click on a row then opens that row's menu.
+          ? [row(r), menuBox("log-menu", t, this.logActions(r, t), (cx) => { this.riskyFor = null; this.confirm = null; cx.notify(); }).mx(6)]
           : [row(r)]))
         .when(rows.length > this.logShown, (e) => e.child(h_flex().flex_none().p(8).justify_center()
           .child(button("log-more", `Show ${Math.min(LOG_PAGE, rows.length - this.logShown)} more (${rows.length - this.logShown} left)`, t,

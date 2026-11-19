@@ -302,7 +302,7 @@ export const actionsMethods = {
     if (!name) { input.focus(); return; }
     this.menu = null;
     this.act("New branch", async () => { await this.git(["switch", "-c", name, ...(from ? [from] : [])]); return `Created ${name}${from ? ` at ${from.slice(0, 7)}` : ""}`; },
-      cx, (ok) => { if (ok) input.set_value(""); });
+      cx, (ok) => { if (ok) { input.set_value(""); this.logName = null; } });
   },
 
   // Asks first. A branch with commits no other branch has is refused; its button then
@@ -334,7 +334,7 @@ export const actionsMethods = {
     name = (name ?? "").trim();
     if (!name) { this.tagName.focus(); return; }
     this.act("Tag", async () => { await this.git(["tag", "--", name, ...(hash ? [hash] : [])]); return `Tagged ${hash ? hash.slice(0, 7) : "HEAD"} ${name}`; },
-      cx, (ok) => { if (ok) this.tagName.set_value(""); });
+      cx, (ok) => { if (ok) { this.tagName.set_value(""); this.logName = null; } });
   },
 
   // Asks first. Deletes the tag here only: one already pushed stays on the remote.

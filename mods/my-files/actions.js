@@ -1,7 +1,7 @@
 // Files: search and replace across files, @path to the chat, new / rename / delete.
 import { h_flex, v_flex } from "gpui-base";
 import { exec, readTextFile, writeTextFile, window } from "herdr";
-import { READ, sendToChat, untab, button, textInput } from "./common.js";
+import { READ, sendToChat, untab, button, menuBox, nameForm, confirmButton } from "./common.js";
 import { MAX_EDIT } from "./editor.js";
 import { replaceOnLines } from "./text.js";
 import { psQuote } from "./tree.js";
@@ -127,23 +127,24 @@ export const actionsMethods = {
     if (r.code !== 0) throw new Error((r.stderr || r.stdout).trim().split(/\r?\n/)[0] || `${action} failed`);
   },
 
-  menuRow(depth, t) {
-    const m = this.menu, isRoot = m.path === "";
-    // One item per line; the name box and its buttons still share a line.
-    return (this.nameAction ? h_flex().gap(4).items_center().flex_wrap() : v_flex().gap(2).items_start()).id("file-menu").flex_none().pl(8 + depth * 16).pr(8).py(4).rounded(6).bg(t.raised)
-      .on_mouse_down("left", (_e, cx) => cx.stop_propagation())
-      .children(this.nameAction ? [
-        textInput("file-name", this.nameInput, this.typing === "name", t),
-        button("file-name-ok", { "new-file": "Create file", "new-folder": "Create folder", rename: "Rename" }[this.nameAction], t, (_e, cx) => this.fileOp(this.nameAction, cx), { primary: true }),
-        button("file-name-cancel", "Cancel", t, (_e, cx) => { this.nameAction = null; cx.notify(); }),
-      ] : [
-        ...(isRoot ? [] : [button("file-send", "@ chat", t, (_e, cx) => { this.menu = null; this.send(m.path, cx); })]),
-        button("file-new", "New file", t, (_e, cx) => this.nameThen("new-file", "", cx)),
-        button("file-new-dir", "New folder", t, (_e, cx) => this.nameThen("new-folder", "", cx)),
-        ...(isRoot ? [] : [
-          button("file-rename", "Rename", t, (_e, cx) => this.nameThen("rename", "", cx)),
-          button("file-delete", m.confirm ? "Delete? click again" : "Delete", t, (_e, cx) => this.fileOp("delete", cx), { danger: true }),
-        ]),
-      ].map((b) => b.w_full())); // each item as wide as the menu
+  // Under the row it is for; its items keep the same inset at any folder depth (as History's menu).
+  menuRow(t) {
+    const m = this.menu, isRoot = m.path === "", a = this.nameAction;
+    if (a) {
+      // Where it goes, as fileOp works it out: a folder's own path, else the file's folder.
+      const folder = (a === "rename" || !m.dir ? m.path.replace(/\/?[^/]*$/, "") : m.path) || "the top folder";
+      const label = a === "rename" ? `Rename ${m.path.split("/").pop()}` : `New ${a === "new-file" ? "file" : "folder"} in ${folder}`;
+      return menuBox("file-menu", t, [nameForm("file-name", t, label, this.nameInput, this.typing === "name",
+        { "new-file": "Create file", "new-folder": "Create folder", rename: "Rename" }[a], (_e, cx) => this.fileOp(a, cx), (_e, cx) => { this.nameAction = null; cx.notify(); })]);
+    }
+    return menuBox("file-menu", t, [
+      ...(isRoot ? [] : [button("file-send", "@ chat", t, (_e, cx) => { this.menu = null; this.send(m.path, cx); })]),
+      button("file-new", "New file", t, (_e, cx) => this.nameThen("new-file", "", cx)),
+      button("file-new-dir", "New folder", t, (_e, cx) => this.nameThen("new-folder", "", cx)),
+      ...(isRoot ? [] : [
+        button("file-rename", "Rename", t, (_e, cx) => this.nameThen("rename", "", cx)),
+        confirmButton("file-delete", "Delete", Boolean(m.confirm), t, (_e, cx) => this.fileOp("delete", cx)),
+      ]),
+    ]);
   },
 };

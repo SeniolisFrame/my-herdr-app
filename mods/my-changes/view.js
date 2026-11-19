@@ -2,7 +2,7 @@
 import { div } from "gpui-kit";
 import { v_flex, h_flex, Input, Scrollbar } from "gpui-base";
 import { settings } from "herdr";
-import { diffRow, button, iconButton, buttonGroup, textInput, lazyRows, foldPanel } from "./common.js";
+import { diffRow, button, iconButton, buttonGroup, textInput, lazyRows, foldPanel, menuBox, checkbox, confirmButton } from "./common.js";
 
 export const viewMethods = {
   fileRow(item, t) {
@@ -13,11 +13,9 @@ export const viewMethods = {
       .when(sel, (e) => e.bg(t.selected)).hover((s) => s.bg(t.hover))
       .on_click((e, cx) => { if (e.click_count > 1) this.openInFiles(item.path); else this.pick(item, cx); })
       .on_mouse_down("right", (_e, cx) => { cx.stop_propagation(); this.send(item.path, cx); })
-      .child(div().id(`box-${item.side}-${item.path}`).w(16).h(16).flex_none().flex().items_center().justify_center().rounded(4).border_1()
-        .border_color(f.conflict ? t.ansi1 : t.accent).bg(staged ? t.accent : t.background)
-        .text_size(11).text_color(staged ? t.accent_foreground : t.ansi1)
+      .child(checkbox(staged, t, f.conflict).id(`box-${item.side}-${item.path}`)
         .on_mouse_down("left", (_e, cx) => cx.stop_propagation())
-        .on_click((_e, cx) => { cx.stop_propagation(); this.toggleFile(item, cx); }).child(staged ? "✓" : f.conflict ? "!" : ""))
+        .on_click((_e, cx) => { cx.stop_propagation(); this.toggleFile(item, cx); }))
       .child(div().w(12).flex_none().text_size(11).text_color(color).child(item.letter === "?" ? "A" : item.letter))
       .child(h_flex().flex_1().min_w(0).child(div().text_color(t.dim).truncate().child(parts.length ? parts.join("/") + "/" : "")).child(div().flex_none().max_w(260).truncate().child(name)))
       .when(st?.add > 0, (e) => e.child(div().text_size(11).text_color(t.ansi2).child(`+${st.add}`)))
@@ -32,7 +30,7 @@ export const viewMethods = {
         .child(div().flex_1().font_semibold().child(`${staged ? "Staged" : "Unstaged"} · ${items.length}`))
         .child(staged ? button("unstage-all", "Unstage all", t, (_e, cx) => this.unstageAll(cx), { enabled: !this.busy && items.length > 0 })
           : h_flex().gap(6)
-            .child(button("discard-all", this.confirm?.all ? "Discard all? click again" : "Discard all", t, (_e, cx) => this.discardAll(cx), { danger: true, enabled: !this.busy && items.length > 0 }))
+            .child(confirmButton("discard-all", "Discard all", Boolean(this.confirm?.all), t, (_e, cx) => this.discardAll(cx), { enabled: !this.busy && items.length > 0 }))
             .child(button("stage-all", "Stage all", t, (_e, cx) => this.stageAll(cx), { enabled: !this.busy && items.length > 0 }))),
       div().flex_none().h(Math.min(Math.max(items.length, 1) * 26 + 4, 160)).relative()
         .child(v_flex().id(`list-${side}`).absolute().inset_0().overflow_y_scroll().px(6).children(items.map((x) => this.fileRow(x, t)))
@@ -69,12 +67,11 @@ export const viewMethods = {
 
   hunkMenuView(m, t) {
     const a = this.hunkAction(m.hunk), asking = this.confirm?.hunk === m.hunk;
-    return v_flex().id("hunk-menu").absolute().left(m.x).top(m.y).p(4).gap(2).items_start().rounded(6).bg(t.raised).border_1().border_color(t.border)
-      .on_mouse_down_out((_e, cx) => { this.hunkMenu = null; this.confirm = null; cx.notify(); })
-      .child(button("hunk-stage", a.stage, t, (_e, cx) => { this.hunkMenu = null; this.applyHunk(m.hunk, cx); }).w_full())
+    return menuBox("hunk-menu", t, [
+      button("hunk-stage", a.stage, t, (_e, cx) => { this.hunkMenu = null; this.applyHunk(m.hunk, cx); }),
       // Asks twice, as before: the first click turns it into "click again".
-      .when(this.sel?.side !== "staged", (e) => e.child(button("hunk-discard", asking ? `Discard ${a.what}? click again` : `Discard ${a.what}`, t,
-        (_e, cx) => { if (asking) this.hunkMenu = null; this.discardHunk(m.hunk, cx); }, { danger: true }).w_full()));
+      ...(this.sel?.side === "staged" ? [] : [confirmButton("hunk-discard", `Discard ${a.what}`, asking, t, (_e, cx) => { if (asking) this.hunkMenu = null; this.discardHunk(m.hunk, cx); })]),
+    ], (cx) => { this.hunkMenu = null; this.confirm = null; cx.notify(); }).absolute().left(m.x).top(m.y);
   },
 
   // Changes | History, side by side across the whole panel; the picked one underlined.
@@ -125,7 +122,7 @@ export const viewMethods = {
     return v_flex().id("branch-menu").flex_1().min_h(0).overflow_y_scrollbar().p(6).gap(2)
       .child(h_flex().gap(6).pb(4).child(textInput("branch-input", this.branchName, this.typing === "branch", t))
         .child(button("branch-create", "Create", t, (_e, cx) => this.newBranch(cx), { primary: true })))
-      .child(div().px(8).pt(4).text_size(11).text_color(t.dim).child("Local — click to check out"))
+      .child(div().px(8).pt(4).text_size(11).text_color(t.dim).child("Local — click: check out · right-click: merge"))
       .children(m.local.map((b) => row(b, false)))
       .when(m.remote.length > 0, (e) => e.child(div().px(8).pt(8).text_size(11).text_color(t.dim).child("Remote")).children(m.remote.map((b) => row(b, true))));
   },
@@ -135,11 +132,16 @@ export const viewMethods = {
     const canCommit = !this.busy && (this.amend ? this.hasMessage : this.inProgress || (staged > 0 && this.hasMessage));
     const undo = this.confirm?.undo;
     const label = this.busy === "Commit" || this.busy === "Amend" ? "Committing…" : this.amend ? "Amend" : this.inProgress && !this.hasMessage ? `Commit ${this.inProgress}` : `Commit ${staged || ""}`.trim();
+    // A disabled Commit says what it waits for.
+    const why = canCommit ? null : this.busy ? "Wait for the running git command" : this.amend ? "Type the new message" : !staged && !this.inProgress ? "Stage files first (their box, or Stage all)" : "Type a commit message";
+    const canAmend = this.hasHead && !this.inProgress;
     return v_flex().flex_none().p(10).gap(6).border_t(1).border_color(t.border)
-      .child(h_flex().gap(6).items_center()
-        .child(button("amend", `${this.amend ? "☑" : "☐"} Amend`, t, (_e, cx) => this.toggleAmend(cx), { active: this.amend, enabled: this.hasHead && !this.inProgress }))
-        .child(button("undo", undo === undefined ? "Undo last commit" : undo ? "Already pushed! Undo anyway? click again" : "Undo last commit? click again", t,
-          (_e, cx) => this.undoCommit(cx), { enabled: this.hasHead && !this.busy && !this.inProgress, danger: undo !== undefined }))
+      // Undo's second click: a short label, and the warning on its own line, so nothing is pushed off the row.
+      .when(undo === true, (e) => e.child(div().text_size(11).text_color(t.ansi1).child("The last commit is already pushed: undoing it rewrites what others may have.")))
+      .child(h_flex().gap(6).items_center().flex_wrap()
+        .child(button("amend", h_flex().gap(6).items_center().child(checkbox(this.amend, t, false, canAmend)).child("Amend"), t, (_e, cx) => this.toggleAmend(cx), { active: this.amend, enabled: canAmend }))
+        .child(confirmButton("undo", "Undo last commit", undo !== undefined, t,
+          (_e, cx) => this.undoCommit(cx), { ask: "Undo", danger: undo !== undefined, enabled: this.hasHead && !this.busy && !this.inProgress }))
         .child(div().flex_1())
         .child(button("ask", "Ask chat to write it", t, (_e, cx) => this.askChat(cx), { enabled: staged > 0 })))
       .child(h_flex().gap(8)
@@ -148,6 +150,6 @@ export const viewMethods = {
           .child(Input.new(this.message).h_full().text_size(12).text_color(t.foreground)))
         .child(div().id("commit").h(32).px(14).flex().items_center().rounded(8).bg(canCommit ? t.solid : t.raised)
           .text_color(canCommit ? t.solid_foreground : t.dim).text_size(12).when(canCommit, (e) => e.cursor_pointer())
-          .on_click((_e, cx) => this.commit(cx)).child(label)));
+          .when(Boolean(why), (e) => e.tooltip(why)).on_click((_e, cx) => this.commit(cx)).child(label)));
   },
 };
