@@ -12,12 +12,13 @@ export function parseBlame(out) {
   const rows = [], meta = {};
   let cur = null;
   for (const line of out.split(/\r?\n/)) { // a CRLF file keeps its \r in blame's text lines
-    if (line.startsWith("\t")) { const m = meta[cur.hash]; rows.push({ ...cur, author: m.author, date: m.date, text: untab(line.slice(1)) || " " }); continue; }
+    if (line.startsWith("\t")) { const m = meta[cur.hash]; rows.push({ ...cur, author: m.author, time: m.time, summary: m.summary, text: untab(line.slice(1)) || " " }); continue; }
     const head = /^([0-9a-f]{40}) \d+ (\d+)/.exec(line);
     if (head) { cur = { hash: head[1], line: +head[2] }; meta[cur.hash] ??= {}; continue; }
     if (!cur) continue;
     if (line.startsWith("author ")) meta[cur.hash].author = line.slice(7);
-    if (line.startsWith("author-time ")) meta[cur.hash].date = new Date(+line.slice(12) * 1000).toISOString().slice(0, 10);
+    if (line.startsWith("author-time ")) meta[cur.hash].time = +line.slice(12);
+    if (line.startsWith("summary ")) meta[cur.hash].summary = line.slice(8);
   }
   return rows;
 }

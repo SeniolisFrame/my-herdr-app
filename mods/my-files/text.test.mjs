@@ -1,6 +1,16 @@
 // node mods/my-files/text.test.mjs
 import assert from "node:assert/strict";
-import { usesTabs, tabsToSpaces, spacesToTabs, replaceOnLines, replaceAll, snippet, parseCsv, guessSeparator } from "./text.js";
+import { usesTabs, tabsToSpaces, spacesToTabs, replaceOnLines, replaceAll, snippet, parseCsv, guessSeparator, blameBlocks, ago } from "./text.js";
+
+// Blame: one head per run of lines from the same commit, the lines kept in order.
+const kinds = blameBlocks([{ hash: "a", line: 1 }, { hash: "a", line: 2 }, { hash: "b", line: 3 }, { hash: "a", line: 4 }])
+  .map((r) => (r.head ? `H${r.hash}` : r.line)).join(" ");
+assert.equal(kinds, "Ha 1 2 Hb 3 Ha 4");
+assert.deepEqual(blameBlocks([]), []);
+assert.equal(ago(1000, 1000), "just now");
+assert.equal(ago(1000, 1000 + 90), "1 minute ago");
+assert.equal(ago(1000, 1000 + 3 * 86400), "3 days ago");
+assert.equal(ago(0, 400 * 86400), "1 year ago");
 
 // CSV: quotes hold the separator, line breaks and "" ; CRLF; no row for the last newline.
 assert.deepEqual(parseCsv('name,note\r\n"Lee, D","say ""hi""\nthere"\r\nx,\n', ","),

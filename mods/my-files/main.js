@@ -6,6 +6,7 @@ import { theme, settings, nextCommand, shared } from "herdr";
 import { locationKey, focusChat, diffRow, button, iconButton, buttonGroup, textInput, lazyRows, foldPanel, trackWidth, foldedStrip, menuBox } from "./common.js";
 import { TOTAL } from "./tree.js";
 import { iconFor } from "./icons.js";
+import { blameBlocks, ago } from "./text.js";
 import { treeMethods } from "./tree.js";
 import { editorMethods } from "./editor.js";
 import { actionsMethods } from "./actions.js";
@@ -171,15 +172,18 @@ export default class Files extends View {
     if (this.mode === "table" && this.table) return this.tableView(t, font);
     if (!this.rows) return div().p(12).text_color(t.dim).child("Loading…");
     if (this.mode === "blame") {
-      const rows = this.rows;
+      // A head row before each run of lines from one commit (who, when, its message), so nothing
+      // is cut short and the code keeps the full width; a click on either opens that commit.
+      // Grouped once per read (kept on the rows array), not on every redraw: a big file has 20k lines.
+      const rows = (this.rows.blocks ??= blameBlocks(this.rows)), none = (r) => /^0+$/.test(r.hash);
       return lazyRows("files-blame", rows.length, (i) => {
-        const r = rows[i], first = rows[i - 1]?.hash !== r.hash;
+        const r = rows[i];
+        if (r.head) return div().w_full().h(20).flex_none().px(6).bg(t.raised).text_color(t.muted).truncate().cursor_pointer()
+          .child(none(r) ? "not committed" : `${r.author} · ${ago(r.time)} · ${r.summary ?? ""}`);
         return h_flex().w_full().h(20).flex_none().gap(8).px(6).cursor_pointer().hover(s => s.bg(t.hover))
-          // Narrow: the hash only, so the code keeps its room.
-          .child(div().w(this.wide ? 160 : 60).flex_none().truncate().text_color(first ? t.muted : t.background).child(/^0+$/.test(r.hash) ? (this.wide ? "not committed" : "—") : this.wide ? `${r.hash.slice(0, 7)} ${r.date} ${r.author}` : r.hash.slice(0, 7)))
           .child(div().w(36).flex_none().text_right().text_color(t.dim).child(String(r.line)))
           .child(div().flex_1().min_w(0).truncate().child(r.text));
-      }, { font, click: (i, cx) => { if (!/^0+$/.test(rows[i].hash)) this.showCommit(rows[i].hash, cx); } });
+      }, { font, click: (i, cx) => { if (!none(rows[i])) this.showCommit(rows[i].hash, cx); } });
     }
     if (this.mode === "history") {
       if (!this.rows.length) return div().p(12).text_color(t.dim).child("No commits for this file yet");

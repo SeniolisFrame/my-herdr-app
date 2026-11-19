@@ -48,6 +48,23 @@ export function guessSeparator(text) {
   return best;
 }
 
+// Blame rows → the same rows with a head row before each run of lines from one commit:
+// { head: true, ...that commit's first row }. The code lines stay one after another.
+export function blameBlocks(rows) {
+  const out = [];
+  rows.forEach((r, i) => { if (i === 0 || rows[i - 1].hash !== r.hash) out.push({ ...r, head: true }); out.push(r); });
+  return out;
+}
+
+// Seconds since the epoch → "3 days ago" (now: the epoch seconds to count from).
+export function ago(sec, now = Date.now() / 1000) {
+  const s = Math.max(0, now - sec);
+  for (const [unit, n] of [["year", 31536000], ["month", 2592000], ["week", 604800], ["day", 86400], ["hour", 3600], ["minute", 60]]) {
+    if (s >= n) { const k = Math.floor(s / n); return `${k} ${unit}${k > 1 ? "s" : ""} ago`; }
+  }
+  return "just now";
+}
+
 // q found literally, in any case.
 const literal = (q) => new RegExp(q.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"), "gi");
 
