@@ -150,7 +150,9 @@ rm -rf "$APP/mods/my-files" "$APP/mods/my-changes" "$APP/layouts/my-herdr.json"
 - **Right-click** a file or folder: **@ chat**, **New file**, **New folder**,
   **Rename**, **Delete** (click twice). **+** in the header does New file / New
   folder in the top folder. On this computer only.
-- **Blame**: who changed each line; click a line to see that commit's change.
+- **Blame**: before each run of lines from one commit, a row says who, how long ago and
+  the commit's message; the code keeps the full width. Click it (or a line) to see that
+  commit's change.
 - **History**: the file's commits; click one to see its change.
 - Select code in the open file and **right-click → Send to chat**: it types the
   file and lines (`src/a.go:12-18`) and the code in a code block into the chat.
@@ -190,7 +192,8 @@ rm -rf "$APP/mods/my-files" "$APP/mods/my-changes" "$APP/layouts/my-herdr.json"
   current**. **Fetch**, **Pull**, **Push** (a new branch is pushed to `origin`),
   **Stash** (untracked files too), **Pop**.
 - Conflicts (after a merge, pull, stash pop, cherry-pick or revert): the file shows
-  `!` and its text with the conflict markers. Take **Ours** or **Theirs**, or edit
+  `!` and its text with the conflict markers. Take **Ours** or **Theirs** (each
+  takes that side's version of the **whole file**, not only the conflict), or edit
   it in Files and click **Mark resolved**; then Commit (an empty message uses
   git's). **Abort** undoes the whole operation.
 - **History** tab: the graph of all branches: one color per line,
@@ -238,7 +241,8 @@ or script them: `herdr-app do my-changes.pull`.
 - `my-files.<cmd>`: `sync`, `toggle:<folder>`, `open:<path>[:<line>]`, `save`, `close`, `find:<text>`,
   `replace-in-file:<text>|<new>`, `search:<text>`, `replace-all:<new>`, `blame`,
   `history`, `send[:<path>]`, `send-code`, `table`, `separator:<s>`, `type:<text>`, `menu:<path>` then `new-file:<name>`,
-  `new-folder:<name>`, `rename:<name>` or `delete` (twice)
+  `new-folder:<name>`, `rename:<name>` or `delete` (deletes at once:
+  the menu's Delete button asks twice, the command doesn't)
 - `my-changes.<cmd>`: `sync`, `select:<path>` (or `select:staged:<path>` /
   `select:unstaged:<path>`), `stage`, `stage-all`, `unstage-all`, `hunk:<n>`,
   `discard-hunk:<n>` (twice), `line:<hunk>:<line>`, `discard`, `open`, `ours`, `theirs`, `commit[:<message>]`,
@@ -274,16 +278,16 @@ other files add its methods by job (`Object.assign(<Class>.prototype, ...)`).
 
 | Path | What |
 | --- | --- |
-| `shared/common.js` | helpers both panels use (git, the chat, diff rows, buttons, text box, folder watch) |
+| `shared/common.js` | helpers both panels use (git, the chat, diff rows, lazy lists, folding a panel) and the shared elements: buttons, menu, name form, check box, click-twice button, text box |
 | `mods/my-files/main.js` | Files: the class, commands, keys, drawing |
-| `mods/my-files/tree.js` | listing folders (in-process here, sh or PowerShell on another machine) and the refresh |
+| `mods/my-files/tree.js` | listing folders (in-process under the home folder, else sh or PowerShell) and the refresh |
 | `mods/my-files/editor.js` | the open file: edit, save, find, replace, blame, history |
 | `mods/my-files/actions.js` | search and replace across files, @path, new / rename / delete |
 | `mods/my-files/icons.js`, `icons/` | which icon a file or folder gets; the icons are [Material Icon Theme](https://github.com/material-extensions/vscode-material-icon-theme)'s (MIT) (test: `node mods/my-files/icons.test.mjs`) |
-| `mods/my-files/text.js` | tab ↔ space indents and replacing text (test: `node mods/my-files/text.test.mjs`) |
+| `mods/my-files/text.js` | tab ↔ space indents, replacing text, the Send to chat snippet, CSV parsing, blame runs (test: `node mods/my-files/text.test.mjs`) |
 | `mods/my-changes/main.js` | Changes: the class, commands, status refresh, the diff, keys |
 | `mods/my-changes/actions.js` | stage, discard, commit, remote, stash, branches |
-| `mods/my-changes/history.js` | the History graph and a commit's changes |
+| `mods/my-changes/history.js` | the History graph, a commit's actions (branches, tags) and its changes |
 | `mods/my-changes/view.js` | drawing: tabs, toolbar, lists, diff, branch menu, commit box |
 | `mods/my-changes/status.js` | limits and the status-list helpers |
 | `mods/my-changes/patch.js` | patches for staging hunks and single lines (test: `node mods/my-changes/patch.test.mjs`) |
