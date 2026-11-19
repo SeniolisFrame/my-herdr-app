@@ -17,6 +17,10 @@ Both panels follow the focused pane's folder. These are native herdr-app panels
 (GPUI), so Thai text renders correctly, the mouse works everywhere, and files open
 in a real editor.
 
+> [!WARNING]
+> ⚠️ **All the code in this repo was written by AI (Claude Code).**
+> Read it before you rely on it, and use it at your own risk.
+
 ## Install
 
 ### What you need
