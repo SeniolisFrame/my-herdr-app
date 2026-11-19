@@ -71,10 +71,10 @@ export const viewMethods = {
     const a = this.hunkAction(m.hunk), asking = this.confirm?.hunk === m.hunk;
     return v_flex().id("hunk-menu").absolute().left(m.x).top(m.y).p(4).gap(2).items_start().rounded(6).bg(t.raised).border_1().border_color(t.border)
       .on_mouse_down_out((_e, cx) => { this.hunkMenu = null; this.confirm = null; cx.notify(); })
-      .child(button("hunk-stage", a.stage, t, (_e, cx) => { this.hunkMenu = null; this.applyHunk(m.hunk, cx); }))
+      .child(button("hunk-stage", a.stage, t, (_e, cx) => { this.hunkMenu = null; this.applyHunk(m.hunk, cx); }).w_full())
       // Asks twice, as before: the first click turns it into "click again".
       .when(this.sel?.side !== "staged", (e) => e.child(button("hunk-discard", asking ? `Discard ${a.what}? click again` : `Discard ${a.what}`, t,
-        (_e, cx) => { if (asking) this.hunkMenu = null; this.discardHunk(m.hunk, cx); }, { danger: true })));
+        (_e, cx) => { if (asking) this.hunkMenu = null; this.discardHunk(m.hunk, cx); }, { danger: true }).w_full()));
   },
 
   // Changes | History, side by side across the whole panel; the picked one underlined.

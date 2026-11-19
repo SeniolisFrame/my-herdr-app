@@ -144,6 +144,6 @@ export const actionsMethods = {
           button("file-rename", "Rename", t, (_e, cx) => this.nameThen("rename", "", cx)),
           button("file-delete", m.confirm ? "Delete? click again" : "Delete", t, (_e, cx) => this.fileOp("delete", cx), { danger: true }),
         ]),
-      ]);
+      ].map((b) => b.w_full())); // each item as wide as the menu
   },
 };
