@@ -19,6 +19,9 @@ export default class Changes extends View {
     // Per place (workspace + tab + folder): its last state, and its newest load.
     // shortcut: kept until the app closes, even for closed tabs; fine for a handful, drop on tab close if many.
     this.saved = new Map(); this.latest = new Map();
+    // Per repo (git dir): the message file asked of the chat and its text before; kept across every
+    // switch of pane, tab or workspace, so the message lands whenever that repo shows again.
+    this.asks = new Map();
     this.message = InputState.new({ placeholder: "Commit message" });
     this.message.on("submit", (_e, cx) => this.commit(cx));
     this.message.on("change", (_e, cx) => { const has = Boolean(this.message.value().trim()); if (has !== this.hasMessage) { this.hasMessage = has; cx.notify(); } });
@@ -112,13 +115,12 @@ export default class Changes extends View {
     if (context !== this.context) {
       // Each workspace's last lists and diff show at once when it comes back; the refresh below updates them.
       if (this.context && this.root) {
-        const { root, gitDir, on, top, files, branch, upstream, track, hasHead, inProgress, limited, diffs, changed, sel, rows, raw, branches, commits, log, logRoot, askFile, askLast } = this;
-        // askFile: a message asked of the chat here still lands in the box when this place shows again.
-        this.saved.set(this.context, { root, gitDir, on, top, files, branch, upstream, track, hasHead, inProgress, limited, diffs, changed, sel, rows, raw, branches, commits, log, logRoot, askFile, askLast });
+        const { root, gitDir, on, top, files, branch, upstream, track, hasHead, inProgress, limited, diffs, changed, sel, rows, raw, branches, commits, log, logRoot } = this;
+        this.saved.set(this.context, { root, gitDir, on, top, files, branch, upstream, track, hasHead, inProgress, limited, diffs, changed, sel, rows, raw, branches, commits, log, logRoot });
       }
       this.context = context; this.root = null; this.files = []; this.sel = null; this.setLines([], "");
       this.error = null; this.note = null; this.watched = null; this.watchToken = null; this.view = "changes"; this.menu = null; this.confirm = null;
-      this.riskyFor = null; this.mergeFor = null; this.amend = false; this.askFile = null; this.logSearch.set_value(""); this.logQuery = ""; this.diffs = null; this.changed = 0; this.branches = null; this.commits = new Map();
+      this.riskyFor = null; this.mergeFor = null; this.amend = false; this.logSearch.set_value(""); this.logQuery = ""; this.diffs = null; this.changed = 0; this.branches = null; this.commits = new Map();
       this.log = null; this.logRoot = null; this.logToken = null; this.reading = null;
       Object.assign(this, this.saved.get(context));
       this.loading = false; // the old place's load carries on behind and keeps its result for it

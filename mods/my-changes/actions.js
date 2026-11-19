@@ -197,10 +197,11 @@ export const actionsMethods = {
   askChat(cx) {
     if (!this.gitDir) return;
     const file = `${this.gitDir}/${ASK_FILE}`.replace(/\//g, this.gitDir.includes("\\") ? "\\" : "/");
-    this.askFile = file;
+    const ask = { file, on: this.on, last: null };
+    this.asks.set(this.gitDir, ask);
     cx.spawn(async (cx) => {
       try {
-        this.askLast = await readTextFile(file, { on: this.on }).catch(() => null);
+        ask.last = await readTextFile(file, { on: ask.on }).catch(() => null);
         await sendToChat(`Write a git commit message for the staged changes (git diff --cached). Save only the message to ${file}, replacing that file. Don't commit.`, cx);
         this.note = { text: "Asked the chat: press Enter there. The message shows up here when it's saved." };
       } catch (e) { this.note = { text: `Not sent: ${e.message ?? e}`, error: true }; }
@@ -209,10 +210,11 @@ export const actionsMethods = {
   },
 
   async takeAskedMessage() {
-    if (!this.askFile) return;
-    const text = await readTextFile(this.askFile, { on: this.on }).catch(() => null);
-    if (!text?.trim() || text === this.askLast) return;
-    this.askLast = text; this.message.set_value(text.trim()); this.hasMessage = true;
+    const ask = this.asks.get(this.gitDir);
+    if (!ask) return;
+    const text = await readTextFile(ask.file, { on: ask.on }).catch(() => null);
+    if (!text?.trim() || text === ask.last) return;
+    ask.last = text; this.message.set_value(text.trim()); this.hasMessage = true;
     this.note = { text: "The chat wrote a commit message: check it, then Commit" };
   },
 
