@@ -22,6 +22,9 @@ export default class Changes extends View {
     // Per repo (git dir): the message file asked of the chat and its text before; kept across every
     // switch of pane, tab or workspace, so the message lands whenever that repo shows again.
     this.asks = new Map();
+    // The commit message box is one box: what is typed in it is kept per repo (git dir), so
+    // repos in other tabs or workspaces commit side by side. boxFor: the repo it shows now.
+    this.typed = new Map(); this.boxFor = null;
     this.message = InputState.new({ placeholder: "Commit message" });
     this.message.on("submit", (_e, cx) => this.commit(cx));
     this.message.on("change", (_e, cx) => { const has = Boolean(this.message.value().trim()); if (has !== this.hasMessage) { this.hasMessage = has; cx.notify(); } });
@@ -91,6 +94,15 @@ export default class Changes extends View {
     run?.();
   }
 
+  // Shows repo gitDir's message in the box (null: an empty box), keeping the one it had.
+  boxTo(gitDir) {
+    if (gitDir === this.boxFor) return;
+    this.dbg("box", { from: this.boxFor, to: gitDir, keep: this.message.value(), load: (gitDir && this.typed.get(gitDir)) || "" });
+    if (this.boxFor) this.typed.set(this.boxFor, this.message.value());
+    const text = (gitDir && this.typed.get(gitDir)) || "";
+    this.message.set_value(text); this.hasMessage = Boolean(text.trim()); this.boxFor = gitDir;
+  }
+
   git(args, timeout) { return git(this.root, this.on, args, timeout); }
 
   watch(root, cx) {
@@ -122,7 +134,9 @@ export default class Changes extends View {
       this.error = null; this.note = null; this.watched = null; this.watchToken = null; this.view = "changes"; this.menu = null; this.confirm = null;
       this.riskyFor = null; this.mergeFor = null; this.amend = false; this.logSearch.set_value(""); this.logQuery = ""; this.diffs = null; this.changed = 0; this.branches = null; this.commits = new Map();
       this.log = null; this.logRoot = null; this.logToken = null; this.reading = null;
-      Object.assign(this, this.saved.get(context));
+      const back = this.saved.get(context) ?? {};
+      Object.assign(this, back);
+      this.gitDir = back.gitDir ?? null; this.boxTo(this.gitDir);
       this.loading = false; // the old place's load carries on behind and keeps its result for it
     }
     if (!cwd) return;
@@ -178,7 +192,7 @@ export default class Changes extends View {
         if (!fresh()) return;
         // Moved elsewhere meanwhile: kept for when that place shows again.
         if (!here()) { this.saved.set(context, { ...this.saved.get(context), ...state }); return; }
-        Object.assign(this, state); this.error = null;
+        Object.assign(this, state); this.error = null; this.boxTo(gitDir);
         if (this.logRoot !== root && !this.logToken) this.loadLog(cx); // read the history ahead, once per repo
         if (inProgress) this.amend = false; // a merge started meanwhile: Commit must not rewrite the last commit
         this.watch(root, cx);
@@ -299,6 +313,7 @@ export default class Changes extends View {
 
   render(cx) {
     if (locationKey() !== this.context) this.refresh(cx);
+    this.checkAsk(cx);
     const t = theme(), f = this.selected(), item = this.sel;
     // Lists that fill the panel stay direct children of the root: one more flex level
     // and they lay out at zero height.
