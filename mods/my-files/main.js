@@ -6,7 +6,7 @@ import { theme, settings, nextCommand, shared } from "herdr";
 import { locationKey, focusChat, diffRow, button, iconButton, buttonGroup, textInput, lazyRows, foldPanel, trackWidth, foldedStrip, menuBox } from "./common.js";
 import { TOTAL } from "./tree.js";
 import { iconFor } from "./icons.js";
-import { blameBlocks, ago } from "./text.js";
+import { blameBlocks, ago, hitSegments } from "./text.js";
 import { treeMethods } from "./tree.js";
 import { editorMethods } from "./editor.js";
 import { actionsMethods } from "./actions.js";
@@ -14,6 +14,9 @@ import { actionsMethods } from "./actions.js";
 export default class Files extends View {
   init(_props, cx) {
     this.handle = cx.focus_handle();
+    // Ctrl+F through the app's keymap, under this panel's key context: it reaches us even with the
+    // editor holding the keyboard (a plain key handler only hears what the editor lets through).
+    cx.bind_keys([{ keystroke: "ctrl-f", action: "my-files-find", context: "MyFiles" }, { keystroke: "cmd-f", action: "my-files-find", context: "MyFiles" }]);
     this.saved = new Map();
     this.entries = new Map(); this.folders = new Set(); this.pending = new Set(); this.marks = {};
     // Per place, its newest load. shortcut: like this.saved, kept until the app closes; fine for a handful of tabs.
@@ -27,10 +30,10 @@ export default class Files extends View {
     this.replaceWith.on("focus", (_e, cx) => { this.typing = "replace"; cx.notify(); });
     this.replaceWith.on("blur", (_e, cx) => { this.typing = null; cx.notify(); });
     this.find = InputState.new({ placeholder: "Find in file" });
-    this.find.on("submit", (_e, cx) => this.findNext(cx));
+    this.find.on("submit", (e, cx) => this.findNext(cx, Boolean(e.shift))); // Enter: next, Shift+Enter: previous
     this.find.on("focus", (_e, cx) => { this.typing = "find"; cx.notify(); });
     this.find.on("blur", (_e, cx) => { this.typing = null; cx.notify(); });
-    this.find.on("change", (_e, cx) => { if (this.mode === "table") cx.notify(); }); // the table filters as you type
+    this.find.on("change", (_e, cx) => { if (this.mode === "table") cx.notify(); else this.countFinds(cx); }); // the table filters as you type; a file counts its matches
     this.replaceIn = InputState.new({ placeholder: "Replace with" });
     this.replaceIn.on("submit", (_e, cx) => this.replaceOne(cx));
     this.nameInput = InputState.new({ placeholder: "Name" });
@@ -62,12 +65,14 @@ export default class Files extends View {
       close: () => this.close(),
       save: () => this.save(cx),
       type: () => this.code && !this.readonly && this.code.replace(arg),
-      find: () => { this.find.set_value(arg); this.findNext(cx); },
+      // Set from here the box sends no change event: an empty find: ends the search itself.
+      find: () => { this.find.set_value(arg); if (arg) this.findNext(cx); else this.countFinds(cx); },
       search: () => { this.search.set_value(arg); this.runSearch(cx); },
       "replace-all": () => { this.replaceWith.set_value(arg); if (this.results?.rows.length) this.replaceHits(this.results.rows, cx); },
       blame: () => this.file && this.showBlame(cx),
       history: () => this.file && this.showHistory(cx),
       send: () => (arg || this.file) && this.send(arg || this.file, cx),
+      "find-box": () => this.openFind(cx), // what Ctrl+F does
       "send-code": () => this.code && this.sendCode(cx), // the selected code, with its file and lines
       table: () => this.isTable() && this.showTable(cx), // a CSV as a table, or back to its text
       separator: () => { this.sepIn.set_value(arg); if (this.mode === "table") this.makeTable(); },
@@ -86,11 +91,12 @@ export default class Files extends View {
   key(e, cx) {
     const k = e.key, ctrl = e.modifiers.control || e.modifiers.platform;
     if (ctrl && k === "s") { this.save(cx); cx.stop_propagation(); return; }
-    if (ctrl && k === "f" && this.code) { this.find.focus(); cx.stop_propagation(); return; }
+    if (ctrl && k === "f") { this.openFind(cx); cx.stop_propagation(); return; }
     if (ctrl && k === "h" && this.code && !this.readonly) { this.showReplace = true; this.replaceIn.focus(); cx.stop_propagation(); cx.notify(); return; }
     if (k === "escape") {
       cx.stop_propagation();
-      if (this.typing) { this.typing = null; this.handle.focus(); }
+      if (this.typing === "find" && this.findAt?.n) this.leaveFind(undefined, cx); // to the file, on the match
+      else if (this.typing) { this.typing = null; this.handle.focus(); }
       else if (this.codeMenu) this.codeMenu = null; // the right-click Send to chat menu
       else if (this.menu) { this.menu = null; this.nameAction = null; }
       else if (this.mode !== "edit") this.mode = "edit";
@@ -153,8 +159,28 @@ export default class Files extends View {
           .child(`No row contains “${this.find.value().trim()}”. Clear Find in file to see all ${Math.max(0, tb.rows.length - 1)} rows.`))));
   }
 
+  // The open file while Find is in use, drawn here so every match can be coloured (the editor
+  // colours only its one selection): the matches tinted, the current one solid. A click on a
+  // line goes back to the editor there; Esc goes back on the current match.
+  findView(t) {
+    const f = this.findAt, font = settings().font_family ?? "JetBrains Mono";
+    // It starts a few lines above the current match, so that one is on screen without scrolling
+    // (a list here can't be told to scroll): a new start is a new list id, which starts at its top.
+    // Lines above it: Esc, back in the file.
+    const top = Math.max(0, f.line - 8);
+    return lazyRows(`files-find-${top}`, f.lines.length - top, (r) => { const i = top + r; return h_flex().w_full().h(20).flex_none().gap(10).cursor_pointer().hover((s) => s.bg(t.hover))
+      .child(div().w(36).flex_none().text_right().text_color(i === f.line ? t.foreground : t.dim).child(String(i + 1)))
+      .child(h_flex().flex_1().min_w(0).overflow_hidden().children(hitSegments(f.lines[i], f.q).map((g) => {
+        const current = g.hit && i === f.line && g.at === f.col;
+        // As VS Code: every match a light yellow, the current one solid yellow with dark text.
+        return div().flex_none().text_color(current ? t.background : t.foreground).when(g.hit, (e) => e.rounded(3).bg(current ? t.ansi3 : t.ansi3 + "40")).child(g.text || " ");
+      }))); }, { font, click: (r, cx) => this.leaveFind(top + r, cx) });
+  }
+
   fileBody(t) {
     if (!this.code) return div().p(12).text_color(t.dim).child(this.fileError || "Loading file…");
+    // A search with matches, and the editor without the keyboard: the find view instead.
+    if (this.mode === "edit" && this.findAt?.n && !this.editing) return this.findView(t);
     if (this.mode === "edit") {
       // Right-click: a small menu at the pointer to send the selected code to the chat.
       const m = this.codeMenu;
@@ -235,7 +261,12 @@ export default class Files extends View {
         .when(!this.readonly && Boolean(this.code), el => el.child(tool("replace-toggle", "replace", "Replace", (_e, cx) => { this.showReplace = !this.showReplace; cx.notify(); }, { active: this.showReplace }))
           .child(div().flex_1())
           .child(tool("save", "save", "Save", (_e, cx) => this.save(cx), { primary: true, enabled: dirty }))))
-      .child(h_flex().child(textInput("files-find", this.find, this.typing === "find", t)));
+      // "2/5" (or "5" before Enter picks one) and ↑ ↓ through them; a table only filters, no counter.
+      .child(h_flex().gap(6).items_center().child(textInput("files-find", this.find, this.typing === "find", t))
+        .when(Boolean(this.findAt) && this.mode !== "table", (el) => el
+          .child(div().flex_none().text_size(11).text_color(this.findAt.n ? t.dim : t.ansi1).child(this.findAt.n ? (this.findAt.i < 0 ? `${this.findAt.n}` : `${this.findAt.i + 1}/${this.findAt.n}`) : "0"))
+          .child(button("files-find-prev", "↑", t, (_e, cx) => this.findNext(cx, true), { name: "Previous match (Shift+Enter)", enabled: this.findAt.n > 0 }))
+          .child(button("files-find-next", "↓", t, (_e, cx) => this.findNext(cx), { name: "Next match (Enter)", enabled: this.findAt.n > 0 }))));
     const replaceInBar = file && this.showReplace && !this.readonly && Boolean(this.code) && h_flex().flex_none().px(10).pb(6).gap(6).items_center().border_b(1).border_color(t.border)
       .child(textInput("files-replace-in", this.replaceIn, this.typing === "replace-in", t))
       .child(button("files-replace-one", "Next", t, (_e, cx) => this.replaceOne(cx)))
@@ -267,7 +298,7 @@ export default class Files extends View {
       .when(Boolean(this.error) || !this.entries.get("")?.length, el => el.child(div().p(8).text_size(12).text_color(t.dim).child(this.error || (this.loading ? "Loading files…" : this.root ? "No files" : "No folder"))))
       .when(this.limited, el => el.child(div().p(8).text_size(11).text_color(t.dim).child("File list limited to 500 entries per folder and 5,000 total")));
     return v_flex().id("my-files").size_full().min_h(0).rounded(10).overflow_hidden().bg(t.background).border_1().border_color(t.border).text_color(t.foreground).text_size(13)
-      .track_focus(this.handle).on_key_down((e, cx) => this.key(e, cx)).on_size_change(({ width }, cx) => trackWidth(this, width, cx))
+      .track_focus(this.handle).key_context("MyFiles").on_action("my-files-find", (_e, cx) => this.openFind(cx)).on_key_down((e, cx) => this.key(e, cx)).on_size_change(({ width }, cx) => trackWidth(this, width, cx))
       .child(header)
       .when(!file, el => el.child(h_flex().flex_none().px(10).py(6).when(!replaceBar, e => e.border_b(1).border_color(t.border)).child(textInput("files-search", this.search, this.typing === "search", t))))
       .when(!file && Boolean(replaceBar), el => el.child(replaceBar))

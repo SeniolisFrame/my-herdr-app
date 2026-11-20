@@ -132,7 +132,12 @@ rm -rf "$APP/mods/my-files" "$APP/mods/my-changes" "$APP/layouts/my-herdr.json"
   (a discard in Changes, the chat editing it), it shows the new text, unless you
   have unsaved edits: Save then refuses, so nothing is overwritten. Files over 400 KB and files on
   other machines open read-only.
-- `ctrl+f` finds in the file. `ctrl+h` (or **Replace**) adds a replace box:
+- `ctrl+f` finds in the file (the selected words go in the box; no file open: Search all
+  files). Beside the box, `2/5` says which match of how many; **Enter** / **↓** goes to the
+  next, **Shift+Enter** / **↑** to the one before, round and round. While you search, the file
+  shows every match in light yellow and the current one in solid yellow, starting a few
+  lines above it (plain text: the editor itself can colour only its selection). **Esc**, or
+  a click on a line, goes back to the editor on that match. `ctrl+h` (or **Replace**) adds a replace box:
   **Next** replaces the found text under the cursor and finds the next one,
   **All** replaces every one in the file (then Save).
 - Tab-indented files (Go) show their tabs as 4 spaces (the editor draws a tab as
@@ -238,7 +243,7 @@ Both panels take commands, so you can bind keys in `~/.config/herdr-app/keys.jso
 or script them: `herdr-app do my-changes.pull`.
 
 - Both: `fold` (fold the panel, or open it again)
-- `my-files.<cmd>`: `sync`, `toggle:<folder>`, `open:<path>[:<line>]`, `save`, `close`, `find:<text>`,
+- `my-files.<cmd>`: `sync`, `toggle:<folder>`, `open:<path>[:<line>]`, `save`, `close`, `find:<text>` (again: the next match), `find-box` (as ctrl+f),
   `replace-in-file:<text>|<new>`, `search:<text>`, `replace-all:<new>`, `blame`,
   `history`, `send[:<path>]`, `send-code`, `table`, `separator:<s>`, `type:<text>`, `menu:<path>` then `new-file:<name>`,
   `new-folder:<name>`, `rename:<name>` or `delete` (deletes at once:

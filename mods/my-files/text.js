@@ -65,6 +65,37 @@ export function ago(sec, now = Date.now() / 1000) {
   return "just now";
 }
 
+// Where q starts in text, any case, not overlapping: [3, 17, …].
+export function findAll(text, q) {
+  const low = text.toLowerCase(), want = q.toLowerCase(), out = [];
+  if (!want) return out;
+  for (let at = low.indexOf(want); at >= 0; at = low.indexOf(want, at + want.length)) out.push(at);
+  return out;
+}
+
+// The match to go to from a selection [start, end): the first one after it, or with back
+// the last one before it, wrapping round at the ends. -1 when there is none.
+export function nextMatch(starts, start, end, back) {
+  if (!starts.length) return -1;
+  if (back) { for (let i = starts.length - 1; i >= 0; i--) if (starts[i] < start) return i; return starts.length - 1; }
+  const i = starts.findIndex((s) => s >= end);
+  return i < 0 ? 0 : i;
+}
+
+// A line cut into pieces for the find view: [{ text, at, hit }], hit marking each match of q
+// (any case) and at its column, so the current one can be told from the rest.
+export function hitSegments(line, q) {
+  const out = [];
+  let from = 0;
+  for (const at of findAll(line, q)) {
+    if (at > from) out.push({ text: line.slice(from, at), at: from, hit: false });
+    out.push({ text: line.slice(at, at + q.length), at, hit: true });
+    from = at + q.length;
+  }
+  if (from < line.length || !out.length) out.push({ text: line.slice(from), at: from, hit: false });
+  return out;
+}
+
 // q found literally, in any case.
 const literal = (q) => new RegExp(q.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"), "gi");
 

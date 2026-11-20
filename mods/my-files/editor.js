@@ -2,7 +2,7 @@
 import { EditorState } from "gpui-base";
 import { readTextFile, writeTextFile, theme, settings } from "herdr";
 import { READ, git, toLines, untab, diffRows, sendToChat } from "./common.js";
-import { usesTabs, tabsToSpaces, spacesToTabs, replaceAll, snippet, parseCsv, guessSeparator } from "./text.js";
+import { usesTabs, tabsToSpaces, spacesToTabs, replaceAll, snippet, parseCsv, guessSeparator, findAll, nextMatch } from "./text.js";
 
 export const LANG = { ts: "js", tsx: "js", mts: "js", cts: "js", jsx: "js", mjs: "js", toml: "yaml", jsonc: "json", svelte: "html", vue: "html" };
 export const MAX_EDIT = 400000;
@@ -27,8 +27,8 @@ export const editorMethods = {
   dirty() { return Boolean(this.code && !this.readonly && this.code.value() !== this.shown); },
 
   close() {
-    this.code?.release(); this.code = null; this.file = null; this.fileError = null; this.mode = "edit";
-    this.rows = null; this.note = null; this.confirmClose = false; this.codeMenu = null;
+    this.code?.release(); this.code = null; this.editing = false; this.file = null; this.fileError = null; this.mode = "edit";
+    this.rows = null; this.note = null; this.confirmClose = false; this.codeMenu = null; this.findAt = null;
     this.table = null; this.sepIn.set_value(""); // the next CSV finds its own separator
   },
 
@@ -93,6 +93,9 @@ export const editorMethods = {
           syntax: { keyword: t.ansi5, string: t.ansi2, comment: t.dim, function: t.ansi4, type: t.ansi3, number: t.ansi1, constant: t.ansi6 } });
         this.shown = this.code.value(); // as the editor holds it, so "changed" compares like with like
         this.code.on("change", (_e, cx) => { const d = this.dirty(); if (d !== this.wasDirty) { this.wasDirty = d; cx.notify(); } });
+        // Whether the editor has the keyboard: the find view (main.js) shows only while it hasn't.
+        this.code.on("focus", (_e, cx) => { this.editing = true; cx.notify(); });
+        this.code.on("blur", (_e, cx) => { this.editing = false; cx.notify(); });
         this.wasDirty = false;
         if (pos) this.goTo(pos);
         else if (this.isTable()) this.showTable();
@@ -103,7 +106,7 @@ export const editorMethods = {
 
   // The open file changed on disk (Changes discarded lines, the chat edited it): show the
   // new text, cursor kept. Not over unsaved edits here: Save then says the file changed.
-  async reloadOpen(context) {
+  async reloadOpen(context, cx) {
     const path = this.file, code = this.code;
     if (!code || this.readonly || this.dirty()) return;
     const text = await readTextFile(this.full(path), { on: this.on });
@@ -116,6 +119,7 @@ export const editorMethods = {
     const n = this.shown.length;
     code.set_selected_range({ start: Math.min(at.start, n), end: Math.min(at.end, n) });
     if (this.mode === "table") this.makeTable();
+    if (this.findAt) this.countFinds(cx); // a search under way shows the new text, not the old lines
   },
 
   // Puts the cursor at the start of { line }, selecting { word } on it.
@@ -177,18 +181,54 @@ export const editorMethods = {
     const { text, n } = replaceAll(this.code.value(), q, this.replaceIn.value());
     if (n) this.code.set_value(text);
     if (n && this.mode === "table") this.makeTable();
+    if (n && this.findAt) this.countFinds(cx); // the find view shows the new text (none left: it goes)
     this.wasDirty = this.dirty(); this.note = n ? `Replaced ${n} in this file: save to keep it` : `“${q}” not found`;
     cx.notify();
   },
 
-  findNext(cx) {
-    const q = this.find.value().toLowerCase();
+  // Ctrl+F: to the Find box with the words selected in the file (one line) in it, all of it
+  // selected so typing replaces it, and its count at once. No file open: Search all files.
+  openFind(cx) {
+    if (!this.code) { this.search.focus(); cx.notify(); return; }
+    const r = this.code.selected_range(), picked = this.code.value().slice(r.start, r.end);
+    if (picked && !picked.includes("\n") && this.mode !== "table") this.find.set_value(picked);
+    this.find.focus(); this.find.set_selected_range({ start: 0, end: this.find.value().length });
+    this.countFinds(cx);
+  },
+
+  // Selects the next match after the selection (back: the one before), wrapping round, and
+  // keeps "match i of n" for the counter beside the box (findAt).
+  findNext(cx, back = false, stay = false) {
+    const q = this.find.value();
     if (!q || !this.code || this.mode === "table") return; // a table: Find filters its rows instead
-    const text = this.code.value(), low = text.toLowerCase(), from = this.code.selected_range().end;
-    let at = low.indexOf(q, from);
-    if (at < 0) at = low.indexOf(q);
-    this.note = at < 0 ? `“${this.find.value()}” not found` : null;
-    if (at >= 0) this.code.set_selected_range({ start: at, end: at + q.length });
+    const text = this.code.value(), starts = findAll(text, q), r = this.code.selected_range();
+    // stay (typing): the first match from the cursor on, as VS Code jumps while you type.
+    const i = stay ? nextMatch(starts, r.start, r.start, false) : nextMatch(starts, r.start, r.end, back);
+    const lines = text.split("\n"), line = i < 0 ? -1 : text.slice(0, starts[i]).split("\n").length - 1;
+    // For the find view (main.js): every line, the current match's line and column.
+    this.findAt = { i, n: starts.length, q, lines, line, col: i < 0 ? -1 : starts[i] - (text.lastIndexOf("\n", starts[i] - 1) + 1) };
+    this.note = i < 0 ? `“${q}” not found` : null;
+    if (i >= 0) this.code.set_selected_range({ start: starts[i], end: starts[i] + q.length });
+    cx.notify();
+  },
+
+  // While typing in Find: go to the first match from the cursor, counting them all.
+  countFinds(cx) {
+    if (this.find.value() && this.code && this.mode !== "table") return this.findNext(cx, false, true);
+    this.findAt = null; this.note = null;
+    cx.notify();
+  },
+
+  // Out of the find view to the editor, the cursor on the current match (row: a clicked line,
+  // whose first match it goes to, else its start).
+  leaveFind(row, cx) {
+    const f = this.findAt;
+    if (f && row !== undefined && row !== f.line) {
+      const before = f.lines.slice(0, row).reduce((n, l) => n + l.length + 1, 0), col = findAll(f.lines[row], f.q)[0] ?? 0;
+      this.code.set_selected_range({ start: before + col, end: before + col + (findAll(f.lines[row], f.q).length ? f.q.length : 0) });
+    }
+    // Back in the editor the search is over: no find view when it loses the keyboard again.
+    this.findAt = null; this.code.focus();
     cx.notify();
   },
 
