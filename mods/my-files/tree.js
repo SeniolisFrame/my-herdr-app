@@ -149,7 +149,7 @@ export const treeMethods = {
         };
         // An open folder that is gone (deleted, renamed) just closes; only the top one is an error.
         // The first listing of a folder also reads the top level's subfolders.
-        const [, marks] = await Promise.all([this.loadFolders(["", ...context.folders], context, !context.entries.size, fresh), marksOf(), this.reloadOpen(context)]);
+        const [, marks] = await Promise.all([this.loadFolders(["", ...context.folders], context, !context.entries.size, fresh), marksOf(), this.reloadOpen(context, cx)]);
         if (!fresh()) return;
         // Moved to another tab meanwhile: kept for this one. Still shown (a switch pending): the
         // switch's snapshot takes it from the panel.

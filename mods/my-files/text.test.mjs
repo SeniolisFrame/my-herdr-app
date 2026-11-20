@@ -1,6 +1,21 @@
 // node mods/my-files/text.test.mjs
 import assert from "node:assert/strict";
-import { usesTabs, tabsToSpaces, spacesToTabs, replaceOnLines, replaceAll, snippet, parseCsv, guessSeparator, blameBlocks, ago } from "./text.js";
+import { usesTabs, tabsToSpaces, spacesToTabs, replaceOnLines, replaceAll, snippet, parseCsv, guessSeparator, blameBlocks, ago, findAll, nextMatch, hitSegments } from "./text.js";
+
+// The find view: a line cut at each match, any case; a line without one stays whole.
+assert.deepEqual(hitSegments("a foo b FOO", "foo").map((x) => [x.text, x.at, x.hit]), [["a ", 0, false], ["foo", 2, true], [" b ", 5, false], ["FOO", 8, true]]);
+assert.deepEqual(hitSegments("none", "foo"), [{ text: "none", at: 0, hit: false }]);
+assert.deepEqual(hitSegments("", "foo"), [{ text: "", at: 0, hit: false }]);
+
+// Find: every match (any case, not overlapping), and stepping on from the selection, wrapping.
+assert.deepEqual(findAll("Foo foo FOO", "foo"), [0, 4, 8]);
+assert.deepEqual(findAll("aaaa", "aa"), [0, 2]);
+assert.deepEqual(findAll("abc", ""), []);
+assert.equal(nextMatch([0, 4, 8], 0, 3, false), 1);  // on the 1st → the 2nd
+assert.equal(nextMatch([0, 4, 8], 8, 11, false), 0); // on the last → wraps to the 1st
+assert.equal(nextMatch([0, 4, 8], 4, 7, true), 0);   // back from the 2nd → the 1st
+assert.equal(nextMatch([0, 4, 8], 0, 3, true), 2);   // back from the 1st → wraps to the last
+assert.equal(nextMatch([], 0, 0, false), -1);
 
 // Blame: one head per run of lines from the same commit, the lines kept in order.
 const kinds = blameBlocks([{ hash: "a", line: 1 }, { hash: "a", line: 2 }, { hash: "b", line: 3 }, { hash: "a", line: 4 }])
