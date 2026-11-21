@@ -49,7 +49,9 @@ the left, your terminal in the middle, Changes on the right.
 `install.ps1` copies `mods/my-files` and `mods/my-changes` into
 `~/.config/herdr-app/mods` (test files left out), checks both mods with
 `herdr-app check`, copies `layouts/my-herdr.json` into `~/.config/herdr-app/layouts`
-and switches to it. If herdr-app keeps its files elsewhere, set `HERDR_APP_HOME`
+and switches to it. The copy replaces the whole layout, so it then runs every `*.ps1` in
+`~/.config/herdr-app/after-layout` with the layout's path: a theme that changes the
+layout (kage does) leaves one there to put its part back. If herdr-app keeps its files elsewhere, set `HERDR_APP_HOME`
 to that folder first.
 
 ### macOS and Linux

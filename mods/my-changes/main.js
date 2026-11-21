@@ -5,7 +5,7 @@
 import { View, div } from "gpui-kit";
 import { v_flex, h_flex, InputState } from "gpui-base";
 import { exec, readTextFile, theme, nextCommand } from "herdr";
-import { location, locationKey, READ, git, toLines, watchWhile, sendToChat, focusChat, untab, diffRows, button, foldPanel, trackWidth, foldedStrip, confirmButton } from "./common.js";
+import { framed, location, locationKey, READ, git, toLines, watchWhile, sendToChat, focusChat, untab, diffRows, button, foldPanel, trackWidth, foldedStrip, confirmButton } from "./common.js";
 import { splitDiff } from "./patch.js";
 import { MAX_FILES, MAX_LINES, PREFETCH_LINES, LOG_PAGE, IN_PROGRESS, sides } from "./status.js";
 import { actionsMethods } from "./actions.js";
@@ -338,7 +338,7 @@ export default class Changes extends View {
           .when(!f.conflict, (e) => e.child(confirmButton("discard", "Discard", this.confirm?.path === f.path, t, (_e, cx) => this.discard(f, cx))))
           : div().flex_1(),
         this.diffView("changes-diff", this.rows, t, true)];
-    return v_flex().id("my-changes").size_full().min_h(0).rounded(10).overflow_hidden().bg(t.background).border_1().border_color(t.border).text_color(t.foreground).text_size(13)
+    return framed(v_flex().id("my-changes").size_full().min_h(0).overflow_hidden().bg(t.background), t).text_color(t.foreground).text_size(13)
       .track_focus(this.handle).on_key_down((e, cx) => this.key(e, cx)).on_size_change(({ width }, cx) => trackWidth(this, width, cx))
       .child(this.tabs(t))
       .when(Boolean(this.root), (e) => e.child(this.toolbar(t)))

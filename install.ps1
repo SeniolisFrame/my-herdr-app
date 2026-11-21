@@ -21,7 +21,11 @@ foreach ($mod in "my-files", "my-changes") {
   if ($out -notmatch "check passed") { throw "check failed: $mod`n$out" }
 }
 
-Copy-Item (Join-Path $PSScriptRoot "layouts\my-herdr.json") (Join-Path $app "layouts\my-herdr.json") -Force
+$layout = Join-Path $app "layouts\my-herdr.json"
+Copy-Item (Join-Path $PSScriptRoot "layouts\my-herdr.json") $layout -Force
+# The copy above undoes what others did to the layout (a theme's own mods, say): each leaves a
+# script in after-layout, run here with the layout's path to put its part back.
+Get-ChildItem (Join-Path $app "after-layout") -Filter *.ps1 -ErrorAction SilentlyContinue | ForEach-Object { & $_.FullName $layout }
 $ErrorActionPreference = "Continue"
 & herdr-app do layout.switch --name my-herdr 2>&1 | Out-Null
 Write-Host "Installed. ctrl+shift+L switches layouts; uninstall.ps1 removes it."

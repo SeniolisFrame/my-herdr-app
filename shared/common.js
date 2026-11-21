@@ -2,7 +2,7 @@
 // install.ps1 copies this file into both (as ./common.js); edit it here, not there.
 import { div, svg } from "gpui-kit";
 import { h_flex, v_flex, v_virtual_list, Input, Scrollbar } from "gpui-base";
-import { spaces, panes, focused, agents, exec, run, watchFolder } from "herdr";
+import { spaces, panes, focused, agents, exec, run, watchFolder, layout } from "herdr";
 
 // Where the panels look: the focused pane's live folder (as the shipped panels do).
 export function location() {
@@ -126,9 +126,25 @@ export function trackWidth(view, width, cx) {
   if (folded !== Boolean(view.folded)) { view.folded = folded; cx.notify(); }
 }
 
+// A panel wears the layout's pane frame (its radius, a 1 or 2px border), so a theme that squares
+// the terminal panes squares the panels too. No pane frame: rounded 10, 1px, as before.
+function paneFrame(node) {
+  if (node?.content?.pane) return node.content.pane;
+  for (const child of node?.children ?? []) {
+    const f = paneFrame(child);
+    if (f) return f;
+  }
+  return null;
+}
+export function framed(el, t) {
+  const f = paneFrame(layout());
+  el = el.rounded(f?.radius ?? 10).border_color(t.border);
+  return (f?.border?.width ?? 1) >= 2 ? el.border_2() : el.border_1();
+}
+
 // The folded panel: one button (» or «) that opens it again.
 export function foldedStrip(id, label, name, t, onOpen) {
-  return v_flex().size_full().items_center().pt(8).rounded(10).bg(t.background).border_1().border_color(t.border)
+  return framed(v_flex().size_full().items_center().pt(8).bg(t.background), t)
     .child(button(`${id}-unfold`, label, t, onOpen, { name }));
 }
 
