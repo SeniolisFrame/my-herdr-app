@@ -5,7 +5,7 @@
 import { View, div } from "gpui-kit";
 import { v_flex, h_flex, InputState } from "gpui-base";
 import { exec, readTextFile, theme, nextCommand } from "herdr";
-import { framed, location, locationKey, READ, git, toLines, watchWhile, sendToChat, focusChat, untab, diffRows, button, foldPanel, trackWidth, foldedStrip, confirmButton } from "./common.js";
+import { framed, location, locationKey, READ, git, toLines, watchWhile, sendToChat, focusChat, untab, diffRows, button, foldPanel, trackWidth, foldedStrip, confirmButton, sz, loadTextSizes } from "./common.js";
 import { splitDiff } from "./patch.js";
 import { MAX_FILES, MAX_LINES, PREFETCH_LINES, LOG_PAGE, IN_PROGRESS, sides } from "./status.js";
 import { actionsMethods } from "./actions.js";
@@ -14,6 +14,7 @@ import { viewMethods } from "./view.js";
 
 export default class Changes extends View {
   init(_props, cx) {
+    loadTextSizes();
     this.handle = cx.focus_handle();
     this.files = []; this.rows = []; this.raw = ""; this.view = "changes"; this.chosen = new Set();
     // Per place (workspace + tab + folder): its last state, and its newest load.
@@ -330,7 +331,7 @@ export default class Changes extends View {
         ...this.fileList("unstaged", t),
         ...this.fileList("staged", t),
         f ? h_flex().flex_none().px(10).py(4).gap(6).items_center().border_t(1).border_b(1).border_color(t.border)
-          .child(div().flex_1().min_w(0).truncate().text_size(12).font_semibold().child(`${f.path}${item.side === "staged" ? " (staged)" : ""}`))
+          .child(div().flex_1().min_w(0).truncate().text_size(sz("sm")).font_semibold().child(`${f.path}${item.side === "staged" ? " (staged)" : ""}`))
           .child(button("open", "Open", t, () => this.openInFiles(f.path)))
           .when(f.conflict, (e) => e.child(button("ours", "Ours", t, (_e, cx) => this.resolve(f, "ours", cx), { name: "Use your version of the whole file" }))
             .child(button("theirs", "Theirs", t, (_e, cx) => this.resolve(f, "theirs", cx), { name: "Use the incoming version of the whole file" }))
@@ -338,11 +339,11 @@ export default class Changes extends View {
           .when(!f.conflict, (e) => e.child(confirmButton("discard", "Discard", this.confirm?.path === f.path, t, (_e, cx) => this.discard(f, cx))))
           : div().flex_1(),
         this.diffView("changes-diff", this.rows, t, true)];
-    return framed(v_flex().id("my-changes").size_full().min_h(0).overflow_hidden().bg(t.background), t).text_color(t.foreground).text_size(13)
+    return framed(v_flex().id("my-changes").size_full().min_h(0).overflow_hidden().bg(t.background), t).text_color(t.foreground).text_size(sz("md"))
       .track_focus(this.handle).on_key_down((e, cx) => this.key(e, cx)).on_size_change(({ width }, cx) => trackWidth(this, width, cx))
       .child(this.tabs(t))
       .when(Boolean(this.root), (e) => e.child(this.toolbar(t)))
-      .when(Boolean(this.note?.text), (e) => e.child(h_flex().flex_none().px(12).py(4).gap(6).text_size(11).text_color(this.note.error ? t.ansi1 : t.ansi2)
+      .when(Boolean(this.note?.text), (e) => e.child(h_flex().flex_none().px(12).py(4).gap(6).text_size(sz("xs")).text_color(this.note.error ? t.ansi1 : t.ansi2)
         .child(div().flex_1().child(this.note.text)).child(button("note-close", "×", t, (_e, cx) => { this.note = null; cx.notify(); }, { name: "Close message" }))))
       .children([body].flat())
       .when(this.view === "changes" && !this.menu && Boolean(this.root), (e) => e.child(this.commitBox(t)));

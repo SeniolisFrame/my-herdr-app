@@ -2,7 +2,7 @@
 import { div } from "gpui-kit";
 import { v_flex, h_flex, Input, Scrollbar } from "gpui-base";
 import { settings } from "herdr";
-import { diffRow, button, iconButton, buttonGroup, textInput, lazyRows, foldPanel, menuBox, checkbox, confirmButton } from "./common.js";
+import { diffRow, button, iconButton, buttonGroup, textInput, lazyRows, foldPanel, menuBox, checkbox, confirmButton, sz } from "./common.js";
 
 export const viewMethods = {
   fileRow(item, t) {
@@ -16,17 +16,17 @@ export const viewMethods = {
       .child(checkbox(staged, t, f.conflict).id(`box-${item.side}-${item.path}`)
         .on_mouse_down("left", (_e, cx) => cx.stop_propagation())
         .on_click((_e, cx) => { cx.stop_propagation(); this.toggleFile(item, cx); }))
-      .child(div().w(12).flex_none().text_size(11).text_color(color).child(item.letter === "?" ? "A" : item.letter))
+      .child(div().w(12).flex_none().text_size(sz("xs")).text_color(color).child(item.letter === "?" ? "A" : item.letter))
       .child(h_flex().flex_1().min_w(0).child(div().text_color(t.dim).truncate().child(parts.length ? parts.join("/") + "/" : "")).child(div().flex_none().max_w(260).truncate().child(name)))
-      .when(st?.add > 0, (e) => e.child(div().text_size(11).text_color(t.ansi2).child(`+${st.add}`)))
-      .when(st?.del > 0, (e) => e.child(div().text_size(11).text_color(t.ansi1).child(`−${st.del}`)));
+      .when(st?.add > 0, (e) => e.child(div().text_size(sz("xs")).text_color(t.ansi2).child(`+${st.add}`)))
+      .when(st?.del > 0, (e) => e.child(div().text_size(sz("xs")).text_color(t.ansi1).child(`−${st.del}`)));
   },
 
   // One list (Unstaged or Staged) with its header and all-button, at most 6 rows high.
   fileList(side, t) {
     const items = this.items().filter((x) => x.side === side), staged = side === "staged";
     return [
-      h_flex().flex_none().px(10).pt(6).pb(2).gap(6).items_center().text_size(11).text_color(t.dim)
+      h_flex().flex_none().px(10).pt(6).pb(2).gap(6).items_center().text_size(sz("xs")).text_color(t.dim)
         .child(div().flex_1().font_semibold().child(`${staged ? "Staged" : "Unstaged"} · ${items.length}`))
         .child(staged ? button("unstage-all", "Unstage all", t, (_e, cx) => this.unstageAll(cx), { enabled: !this.busy && items.length > 0 })
           : h_flex().gap(6)
@@ -34,7 +34,7 @@ export const viewMethods = {
             .child(button("stage-all", "Stage all", t, (_e, cx) => this.stageAll(cx), { enabled: !this.busy && items.length > 0 }))),
       div().flex_none().h(Math.min(Math.max(items.length, 1) * 26 + 4, 160)).relative()
         .child(v_flex().id(`list-${side}`).absolute().inset_0().overflow_y_scroll().px(6).children(items.map((x) => this.fileRow(x, t)))
-          .when(!items.length, (e) => e.child(div().px(6).py(4).text_size(12).text_color(t.dim).child(staged ? "Nothing staged" : "No changes"))))
+          .when(!items.length, (e) => e.child(div().px(6).py(4).text_size(sz("sm")).text_color(t.dim).child(staged ? "Nothing staged" : "No changes"))))
         .child(Scrollbar.vertical(`list-${side}`).absolute().inset_0()),
     ];
   },
@@ -81,7 +81,7 @@ export const viewMethods = {
       .cursor_pointer().border_b(2).border_color(active ? t.accent : t.background).text_color(active ? t.foreground : t.dim)
       .when(active, (e) => e.font_semibold()).when(!active, (e) => e.hover((s) => s.bg(t.hover).text_color(t.foreground)))
       .on_click(onClick).child(label)
-      .when(Boolean(badge), (e) => e.child(div().px(6).rounded(8).bg(t.raised).text_size(11).text_color(t.muted).child(String(badge))));
+      .when(Boolean(badge), (e) => e.child(div().px(6).rounded(8).bg(t.raised).text_size(sz("xs")).text_color(t.muted).child(String(badge))));
     const onLog = this.view !== "changes" && !this.menu;
     // » on the edge next to the chat, as Files' « is: both fold buttons sit where the eye is.
     return h_flex().h(40).flex_none().border_b(1).border_color(t.border)
@@ -95,10 +95,10 @@ export const viewMethods = {
     const busy = Boolean(this.busy), track = this.track ? ` ${this.track.replace(/ahead /, "↑").replace(/behind /, "↓").replace(", ", " ")}` : "";
     return h_flex().flex_none().px(10).py(6).gap(5).items_center().border_b(1).border_color(t.border).flex_wrap()
       .child(button("branch", `⎇ ${this.branch ?? "…"}${track} ▾`, t, (_e, cx) => this.openBranches(cx), { active: Boolean(this.menu) }))
-      .when(Boolean(this.inProgress), (e) => e.child(div().px(6).rounded(4).bg(t.blocked).text_color(t.background).text_size(11).child(this.inProgress.toUpperCase()))
+      .when(Boolean(this.inProgress), (e) => e.child(div().px(6).rounded(4).bg(t.blocked).text_color(t.background).text_size(sz("xs")).child(this.inProgress.toUpperCase()))
         .child(button("abort", `Abort ${this.inProgress}`, t, (_e, cx) => this.abort(cx), { danger: true })))
       .child(div().flex_1())
-      .when(busy, (e) => e.child(div().text_size(11).text_color(t.dim).child(`${this.busy}…`)))
+      .when(busy, (e) => e.child(div().text_size(sz("xs")).text_color(t.dim).child(`${this.busy}…`)))
       .child(tool("sync", "Sync", (_e, cx) => this.sync(cx), { enabled: !this.loading, iconOnly: true }))
       .child(buttonGroup(t, [
         tool("fetch", "Fetch", (_e, cx) => this.fetch(cx), { enabled: !busy }),
@@ -122,9 +122,9 @@ export const viewMethods = {
     return v_flex().id("branch-menu").flex_1().min_h(0).overflow_y_scrollbar().p(6).gap(2)
       .child(h_flex().gap(6).pb(4).child(textInput("branch-input", this.branchName, this.typing === "branch", t))
         .child(button("branch-create", "Create", t, (_e, cx) => this.newBranch(cx), { primary: true })))
-      .child(div().px(8).pt(4).text_size(11).text_color(t.dim).child("Local — click: check out · right-click: merge"))
+      .child(div().px(8).pt(4).text_size(sz("xs")).text_color(t.dim).child("Local — click: check out · right-click: merge"))
       .children(m.local.map((b) => row(b, false)))
-      .when(m.remote.length > 0, (e) => e.child(div().px(8).pt(8).text_size(11).text_color(t.dim).child("Remote")).children(m.remote.map((b) => row(b, true))));
+      .when(m.remote.length > 0, (e) => e.child(div().px(8).pt(8).text_size(sz("xs")).text_color(t.dim).child("Remote")).children(m.remote.map((b) => row(b, true))));
   },
 
   commitBox(t) {
@@ -137,7 +137,7 @@ export const viewMethods = {
     const canAmend = this.hasHead && !this.inProgress;
     return v_flex().flex_none().p(10).gap(6).border_t(1).border_color(t.border)
       // Undo's second click: a short label, and the warning on its own line, so nothing is pushed off the row.
-      .when(undo === true, (e) => e.child(div().text_size(11).text_color(t.ansi1).child("The last commit is already pushed: undoing it rewrites what others may have.")))
+      .when(undo === true, (e) => e.child(div().text_size(sz("xs")).text_color(t.ansi1).child("The last commit is already pushed: undoing it rewrites what others may have.")))
       .child(h_flex().gap(6).items_center().flex_wrap()
         .child(button("amend", h_flex().gap(6).items_center().child(checkbox(this.amend, t, false, canAmend)).child("Amend"), t, (_e, cx) => this.toggleAmend(cx), { active: this.amend, enabled: canAmend }))
         .child(confirmButton("undo", "Undo last commit", undo !== undefined, t,
@@ -147,9 +147,9 @@ export const viewMethods = {
       .child(h_flex().gap(8)
         .child(div().id("commit-message").flex_1().min_w(0).h(32).px(10).flex().items_center().rounded(8).border_1()
           .border_color(this.typing === "message" ? t.accent : t.border).cursor_text().on_mouse_down("left", (_e, cx) => cx.stop_propagation())
-          .child(Input.new(this.message).h_full().text_size(12).text_color(t.foreground)))
+          .child(Input.new(this.message).h_full().text_size(sz("sm")).text_color(t.foreground)))
         .child(div().id("commit").h(32).px(14).flex().items_center().rounded(8).bg(canCommit ? t.solid : t.raised)
-          .text_color(canCommit ? t.solid_foreground : t.dim).text_size(12).when(canCommit, (e) => e.cursor_pointer())
+          .text_color(canCommit ? t.solid_foreground : t.dim).text_size(sz("sm")).when(canCommit, (e) => e.cursor_pointer())
           .when(Boolean(why), (e) => e.tooltip(why)).on_click((_e, cx) => this.commit(cx)).child(label)));
   },
 };

@@ -78,6 +78,14 @@ Your layouts, keys and settings are not changed. `ctrl+shift+L` cycles layouts, 
 you can go back to herdr's `main` and return. If the window ever looks broken,
 `ctrl+alt+shift+escape` always goes back to the default layout.
 
+### Text size
+
+The panels' text is 11–13px with 20px list rows. To change it, put a `my-herdr-text.json` in
+herdr-app's folder (`~/.config/herdr-app/`) with any of `xs` (11), `sm` (12), `md` (13), `logS` (11),
+`logM` (12, both for the commit history) and `row` (20, list row height), e.g.
+`{ "xs": 16, "sm": 16, "md": 16, "row": 22 }`. Restart herdr-app after editing it. Without the file
+nothing changes.
+
 ### Update
 
 ```sh

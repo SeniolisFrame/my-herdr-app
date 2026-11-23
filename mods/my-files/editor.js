@@ -1,7 +1,7 @@
 // Files: the open file (edit, save, find, replace), its blame and history.
 import { EditorState } from "gpui-base";
 import { readTextFile, writeTextFile, theme, settings } from "herdr";
-import { READ, git, toLines, untab, diffRows, sendToChat } from "./common.js";
+import { READ, git, toLines, untab, diffRows, sendToChat, sz } from "./common.js";
 import { usesTabs, tabsToSpaces, spacesToTabs, replaceAll, snippet, parseCsv, guessSeparator, findAll, nextMatch } from "./text.js";
 
 export const LANG = { ts: "js", tsx: "js", mts: "js", cts: "js", jsx: "js", mjs: "js", toml: "yaml", jsonc: "json", svelte: "html", vue: "html" };
@@ -89,7 +89,7 @@ export const editorMethods = {
         this.shown = text.length > MAX_EDIT ? text.slice(0, MAX_EDIT) + "\n… (file truncated, read-only)"
           : this.tabs ? tabsToSpaces(plain) : plain;
         this.code = EditorState.new({ language: LANG[ext] ?? ext, readonly: this.readonly, value: this.shown,
-          font_family: settings().font_family, font_size: 13,
+          font_family: settings().font_family, font_size: sz("md"),
           syntax: { keyword: t.ansi5, string: t.ansi2, comment: t.dim, function: t.ansi4, type: t.ansi3, number: t.ansi1, constant: t.ansi6 } });
         this.shown = this.code.value(); // as the editor holds it, so "changed" compares like with like
         this.code.on("change", (_e, cx) => { const d = this.dirty(); if (d !== this.wasDirty) { this.wasDirty = d; cx.notify(); } });

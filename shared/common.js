@@ -1,8 +1,20 @@
 // Shared by my-files and my-changes. A mod can't import from outside its own folder, so
 // install.ps1 copies this file into both (as ./common.js); edit it here, not there.
 import { div, svg } from "gpui-kit";
+import { pickSize } from "./size.js";
 import { h_flex, v_flex, v_virtual_list, Input, Scrollbar } from "gpui-base";
-import { spaces, panes, focused, agents, exec, run, watchFolder, layout } from "herdr";
+import { spaces, panes, focused, agents, exec, run, watchFolder, layout, shared, setShared, appHome, readTextFile } from "herdr";
+
+// Text sizes and the list row height, in px. A my-herdr-text.json in herdr-app's folder
+// ({"xs":16,"sm":16,...}) overrides any of them; read when a panel starts, so restart
+// herdr-app after editing it. No file: these defaults.
+const SIZES = { xs: 11, sm: 12, md: 13, logS: 11, logM: 12, row: 20 };
+export const sz = (k) => pickSize(shared("my-herdr.text"), k, SIZES);
+export async function loadTextSizes() {
+  let want = null;
+  try { want = JSON.parse(await readTextFile(`${appHome()}/my-herdr-text.json`)); } catch { /* none or invalid: defaults */ }
+  if (JSON.stringify(want) !== JSON.stringify(shared("my-herdr.text") ?? null)) setShared("my-herdr.text", want);
+}
 
 // Where the panels look: the focused pane's live folder (as the shipped panels do).
 export function location() {
@@ -88,10 +100,10 @@ export function diffRows(lines) {
 // opts.picked(row) makes "+"/"-" lines look clickable and marks the picked ones.
 export function diffRow(row, t, opts = {}) {
   const { kind, number, text } = row;
-  if (kind === "file") return div().w_full().px(12).h(20).flex_none().truncate().bg(t.selected).font_semibold().child(text);
-  if (kind === "@") return div().w_full().h(20).flex_none().px(12).bg(t.raised).text_color(t.dim).truncate().child(text);
+  if (kind === "file") return div().w_full().px(12).h(sz("row")).flex_none().truncate().bg(t.selected).font_semibold().child(text);
+  if (kind === "@") return div().w_full().h(sz("row")).flex_none().px(12).bg(t.raised).text_color(t.dim).truncate().child(text);
   const pickable = Boolean(opts.picked) && (kind === "+" || kind === "-"), picked = pickable && opts.picked(row);
-  return h_flex().w_full().h(20).flex_none().gap(10)
+  return h_flex().w_full().h(sz("row")).flex_none().gap(10)
     .when(kind === "+", (e) => e.bg(t.ansi2 + (picked ? "66" : "22"))).when(kind === "-", (e) => e.bg(t.ansi1 + (picked ? "66" : "22")))
     .when(pickable, (e) => e.cursor_pointer())
     .child(div().w(36).flex_none().text_right().text_color(picked ? t.foreground : t.dim).child(picked ? "✓" : number === undefined ? "" : String(number)))
@@ -100,14 +112,14 @@ export function diffRow(row, t, opts = {}) {
     .child(div().flex_1().min_w(0).truncate().text_color(kind === "" ? t.dim : t.foreground).child(text));
 }
 
-// A scrolling list of 20px rows, in a code font, that builds only the rows on screen. row(i)
+// A scrolling list of rows (sz("row") px), in a code font, that builds only the rows on screen. row(i)
 // must not take its own clicks (nor be dragged): o.click(i, cx) and o.rightClick(i, event,
 // cx) get the row instead. The box is `relative`, so a caller can add an absolute menu to it.
 export function lazyRows(id, count, row, o = {}) {
   const build = (range) => { const out = []; for (let i = range.start; i < range.end; i++) out.push(row(i)); return out; };
   // Keys are indexes: o.click gets the row by its index.
-  return v_flex().id(`${id}-box`).relative().flex_1().min_h(0).font_family(o.font).text_size(12)
-    .child(v_virtual_list(id, count, 20, String, build).size_full()
+  return v_flex().id(`${id}-box`).relative().flex_1().min_h(0).font_family(o.font).text_size(sz("sm"))
+    .child(v_virtual_list(id, count, sz("row"), String, build).size_full()
       .when(Boolean(o.click), (e) => e.on_item_click((key, cx) => o.click(Number(key), cx)))
       .when(Boolean(o.rightClick), (e) => e.on_item_secondary_click((key, ev, cx) => o.rightClick(Number(key), ev, cx))))
     .child(Scrollbar.vertical(id).viewport_from_layout().absolute().inset_0());
@@ -162,7 +174,7 @@ export function menuBox(id, t, items, onClose) {
 // own submit, set where the InputState is made.
 export function nameForm(id, t, label, input, focused, createLabel, onCreate, onCancel) {
   return v_flex().gap(4)
-    .child(div().text_size(11).text_color(t.dim).child(label))
+    .child(div().text_size(sz("xs")).text_color(t.dim).child(label))
     .child(h_flex().gap(6).items_center().flex_wrap()
       .child(textInput(`${id}-input`, input, focused, t).min_w(120)) // fills the row; the buttons wrap under it when narrow
       .child(button(`${id}-ok`, createLabel, t, onCreate, { primary: true }))
@@ -171,7 +183,7 @@ export function nameForm(id, t, label, input, focused, createLabel, onCreate, on
 
 // A check box (16px): ✓ when checked, ! when warn (a conflict). Its clicks are the caller's.
 export function checkbox(checked, t, warn = false, enabled = true) {
-  return div().w(16).h(16).flex_none().flex().items_center().justify_center().rounded(4).border_1().text_size(11)
+  return div().w(16).h(16).flex_none().flex().items_center().justify_center().rounded(4).border_1().text_size(sz("xs"))
     .border_color(!enabled ? t.dim : warn ? t.ansi1 : t.accent).bg(checked ? t.accent : t.background)
     .text_color(checked ? t.accent_foreground : t.ansi1).child(checked ? "✓" : warn ? "!" : "");
 }
@@ -186,7 +198,7 @@ export function confirmButton(id, label, asking, t, onClick, opts = {}) {
 // glyph (« × +): its tooltip and what a screen reader says (it would say nothing, or "×").
 export function button(id, label, t, onClick, opts = {}) {
   const on = opts.enabled !== false;
-  return div().id(id).h(24).px(8).flex().flex_none().items_center().rounded(6).text_size(12)
+  return div().id(id).h(24).px(8).flex().flex_none().items_center().rounded(6).text_size(sz("sm"))
     .bg(opts.primary && on ? t.solid : opts.active ? t.selected : t.raised)
     .text_color(!on ? t.dim : opts.primary ? t.solid_foreground : opts.danger ? t.ansi1 : t.foreground)
     .when(on, e => e.cursor_pointer().hover(s => s.bg(opts.primary ? t.solid : t.hover)).on_click((ev, cx) => { cx.stop_propagation(); onClick(ev, cx); }))
@@ -212,5 +224,5 @@ export function buttonGroup(t, buttons) {
 export function textInput(id, state, focusedNow, t) {
   return div().id(id).flex_1().min_w(0).h(28).px(8).flex().items_center().rounded(7).border_1()
     .border_color(focusedNow ? t.accent : t.border).cursor_text().on_mouse_down("left", (_e, cx) => cx.stop_propagation())
-    .child(Input.new(state).h_full().text_size(12).text_color(t.foreground));
+    .child(Input.new(state).h_full().text_size(sz("sm")).text_color(t.foreground));
 }

@@ -3,7 +3,7 @@
 import { View, div, svg, image } from "gpui-kit";
 import { v_flex, h_flex, Editor, InputState } from "gpui-base";
 import { theme, settings, nextCommand, shared } from "herdr";
-import { framed, locationKey, focusChat, diffRow, button, iconButton, buttonGroup, textInput, lazyRows, foldPanel, trackWidth, foldedStrip, menuBox } from "./common.js";
+import { framed, locationKey, focusChat, diffRow, button, iconButton, buttonGroup, textInput, lazyRows, foldPanel, trackWidth, foldedStrip, menuBox, sz, loadTextSizes } from "./common.js";
 import { TOTAL } from "./tree.js";
 import { iconFor } from "./icons.js";
 import { blameBlocks, ago, hitSegments } from "./text.js";
@@ -13,6 +13,7 @@ import { actionsMethods } from "./actions.js";
 
 export default class Files extends View {
   init(_props, cx) {
+    loadTextSizes();
     this.handle = cx.focus_handle();
     // Ctrl+F through the app's keymap, under this panel's key context: it reaches us even with the
     // editor holding the keyboard (a plain key handler only hears what the editor lets through).
@@ -126,7 +127,7 @@ export default class Files extends View {
         .child(entry.dir ? svg(`mods/my-files/icon-caret-${open ? "down" : "right"}.svg`).size(12).flex_none().text_color(t.dim) : div().w(12).flex_none())
         .child(image(iconFor(entry.name, entry.dir, open)).size(16).flex_none())
         .child(div().flex_1().min_w(0).truncate().child(entry.name))
-        .when(Boolean(mark), el => el.child(div().text_size(11).text_color(mark === "A" ? t.ansi2 : mark === "D" || mark === "U" ? t.ansi1 : t.blocked).child(mark))));
+        .when(Boolean(mark), el => el.child(div().text_size(sz("xs")).text_color(mark === "A" ? t.ansi2 : mark === "D" || mark === "U" ? t.ansi1 : t.blocked).child(mark))));
       if (this.menu?.path === path) out.push(this.menuRow(t));
       if (entry.dir && open) this.treeRows(path, depth + 1, out, t);
     }
@@ -141,21 +142,21 @@ export default class Files extends View {
       tb.q = q; tb.shown = [];
       for (let i = 1; i < tb.rows.length; i++) if (!q || tb.rows[i].some((c) => c.toLowerCase().includes(q))) tb.shown.push(i);
     }
-    const line = (cells, n, head) => h_flex().h(20).flex_none().items_center().when(head, (e) => e.bg(t.raised).font_semibold())
+    const line = (cells, n, head) => h_flex().h(sz("row")).flex_none().items_center().when(head, (e) => e.bg(t.raised).font_semibold())
       .child(div().w(44).flex_none().px(6).text_right().text_color(t.dim).child(head ? "" : String(n)))
       .children(tb.widths.map((w, j) => div().w(w).flex_none().px(6).truncate().child((cells[j] ?? "").replace(/\r?\n/g, " ↵ "))));
     // min_w(0) down to the scroll box: a wide table scrolls inside the panel, not widens it.
     return v_flex().flex_1().min_h(0).w_full().min_w(0)
-      .child(h_flex().flex_none().px(10).py(4).gap(6).items_center().text_size(12).text_color(t.dim).border_b(1).border_color(t.border)
+      .child(h_flex().flex_none().px(10).py(4).gap(6).items_center().text_size(sz("sm")).text_color(t.dim).border_b(1).border_color(t.border)
         .child("Separator").child(div().w(64).child(textInput("files-sep", this.sepIn, this.typing === "sep", t)))
         .child(div().flex_1()).child(`${tb.shown.length}${q ? ` of ${Math.max(0, tb.rows.length - 1)}` : ""} rows`))
       .child(div().flex_1().min_h(0).w_full().min_w(0).relative()
         .child(div().id("files-table-x").size_full().overflow_x_scrollbar()
-          .child(v_flex().w(44 + tb.widths.reduce((a, b) => a + b, 0)).h_full().font_family(font).text_size(12)
+          .child(v_flex().w(44 + tb.widths.reduce((a, b) => a + b, 0)).h_full().font_family(font).text_size(sz("sm"))
             .child(line(tb.rows[0] ?? [], 0, true))
             .child(lazyRows("files-table", tb.shown.length, (i) => line(tb.rows[tb.shown[i]], tb.shown[i], false), { font }))))
         // A filter that keeps nothing says so and how to get the rows back, not a blank table.
-        .when(Boolean(q) && !tb.shown.length, (e) => e.child(div().absolute().top(28).left(0).right(0).p(12).text_size(12).text_color(t.dim)
+        .when(Boolean(q) && !tb.shown.length, (e) => e.child(div().absolute().top(28).left(0).right(0).p(12).text_size(sz("sm")).text_color(t.dim)
           .child(`No row contains “${this.find.value().trim()}”. Clear Find in file to see all ${Math.max(0, tb.rows.length - 1)} rows.`))));
   }
 
@@ -168,7 +169,7 @@ export default class Files extends View {
     // (a list here can't be told to scroll): a new start is a new list id, which starts at its top.
     // Lines above it: Esc, back in the file.
     const top = Math.max(0, f.line - 8);
-    return lazyRows(`files-find-${top}`, f.lines.length - top, (r) => { const i = top + r; return h_flex().w_full().h(20).flex_none().gap(10).cursor_pointer().hover((s) => s.bg(t.hover))
+    return lazyRows(`files-find-${top}`, f.lines.length - top, (r) => { const i = top + r; return h_flex().w_full().h(sz("row")).flex_none().gap(10).cursor_pointer().hover((s) => s.bg(t.hover))
       .child(div().w(36).flex_none().text_right().text_color(i === f.line ? t.foreground : t.dim).child(String(i + 1)))
       .child(h_flex().flex_1().min_w(0).overflow_hidden().children(hitSegments(f.lines[i], f.q).map((g) => {
         const current = g.hit && i === f.line && g.at === f.col;
@@ -204,9 +205,9 @@ export default class Files extends View {
       const rows = (this.rows.blocks ??= blameBlocks(this.rows)), none = (r) => /^0+$/.test(r.hash);
       return lazyRows("files-blame", rows.length, (i) => {
         const r = rows[i];
-        if (r.head) return div().w_full().h(20).flex_none().px(6).bg(t.raised).text_color(t.muted).truncate().cursor_pointer()
+        if (r.head) return div().w_full().h(sz("row")).flex_none().px(6).bg(t.raised).text_color(t.muted).truncate().cursor_pointer()
           .child(none(r) ? "not committed" : `${r.author} · ${ago(r.time)} · ${r.summary ?? ""}`);
-        return h_flex().w_full().h(20).flex_none().gap(8).px(6).cursor_pointer().hover(s => s.bg(t.hover))
+        return h_flex().w_full().h(sz("row")).flex_none().gap(8).px(6).cursor_pointer().hover(s => s.bg(t.hover))
           .child(div().w(36).flex_none().text_right().text_color(t.dim).child(String(r.line)))
           .child(div().flex_1().min_w(0).truncate().child(r.text));
       }, { font, click: (i, cx) => { if (!none(rows[i])) this.showCommit(rows[i].hash, cx); } });
@@ -216,7 +217,7 @@ export default class Files extends View {
       return v_flex().id("files-history").flex_1().min_h(0).overflow_y_scrollbar().p(6).children(this.rows.map((r) =>
         v_flex().id(`hist-${r.hash}`).flex_none().px(8).py(5).rounded(6).cursor_pointer().hover(s => s.bg(t.hover)).on_click((_e, cx) => this.showCommit(r.hash, cx))
           .child(div().truncate().child(r.subject))
-          .child(div().text_size(11).text_color(t.dim).truncate().child(`${r.hash} · ${r.date} · ${r.author}`))));
+          .child(div().text_size(sz("xs")).text_color(t.dim).truncate().child(`${r.hash} · ${r.date} · ${r.author}`))));
     }
     // a commit's change to this file
     const rows = this.rows;
@@ -244,7 +245,7 @@ export default class Files extends View {
         this.close(); cx.notify();
       }, { iconOnly: true })))
       .child(div().font_semibold().child("Files"))
-      .child(div().flex_1().min_w(0).truncate().text_right().text_size(12).text_color(dirty ? t.blocked : t.dim)
+      .child(div().flex_1().min_w(0).truncate().text_right().text_size(sz("sm")).text_color(dirty ? t.blocked : t.dim)
         .child(file ? `${file}${dirty ? " ●" : ""}` : this.root?.split(/[\\/]/).pop() ?? ""))
       .when(!file && Boolean(this.root), el => el.child(tool("sync", "sync", "Sync", (_e, cx) => this.refresh(cx), { enabled: !this.loading, iconOnly: true }))
         .child(button("files-new", "+", t, (_e, cx) => this.openMenu("", cx), { active: this.menu?.path === "", name: "New file or folder" })))
@@ -264,7 +265,7 @@ export default class Files extends View {
       // "2/5" (or "5" before Enter picks one) and ↑ ↓ through them; a table only filters, no counter.
       .child(h_flex().gap(6).items_center().child(textInput("files-find", this.find, this.typing === "find", t))
         .when(Boolean(this.findAt) && this.mode !== "table", (el) => el
-          .child(div().flex_none().text_size(11).text_color(this.findAt.n ? t.dim : t.ansi1).child(this.findAt.n ? (this.findAt.i < 0 ? `${this.findAt.n}` : `${this.findAt.i + 1}/${this.findAt.n}`) : "0"))
+          .child(div().flex_none().text_size(sz("xs")).text_color(this.findAt.n ? t.dim : t.ansi1).child(this.findAt.n ? (this.findAt.i < 0 ? `${this.findAt.n}` : `${this.findAt.i + 1}/${this.findAt.n}`) : "0"))
           .child(button("files-find-prev", "↑", t, (_e, cx) => this.findNext(cx, true), { name: "Previous match (Shift+Enter)", enabled: this.findAt.n > 0 }))
           .child(button("files-find-next", "↓", t, (_e, cx) => this.findNext(cx), { name: "Next match (Enter)", enabled: this.findAt.n > 0 }))));
     const replaceInBar = file && this.showReplace && !this.readonly && Boolean(this.code) && h_flex().flex_none().px(10).pb(6).gap(6).items_center().border_b(1).border_color(t.border)
@@ -273,19 +274,19 @@ export default class Files extends View {
       .child(button("files-replace-every", "All", t, (_e, cx) => this.replaceEvery(cx)))
       .child(button("files-replace-close", "×", t, (_e, cx) => { this.showReplace = false; cx.notify(); }, { name: "Close replace" }));
     const confirm = this.confirmClose && dirty && h_flex().flex_none().px(10).py(6).gap(6).items_center().bg(t.raised)
-      .child(div().flex_1().text_size(12).child("Unsaved changes."))
+      .child(div().flex_1().text_size(sz("sm")).child("Unsaved changes."))
       .child(button("files-save-close", "Save", t, (_e, cx) => { this.save(cx); this.confirmClose = false; }, { primary: true }))
       .child(button("files-drop", "Don't save", t, (_e, cx) => { this.close(); cx.notify(); }, { danger: true }))
       .child(button("files-keep", "Cancel", t, (_e, cx) => { this.confirmClose = false; cx.notify(); }));
     const results = this.results && v_flex().id("files-results").flex_1().min_h(0).overflow_y_scrollbar().p(6)
-      .child(h_flex().px(6).pb(4).gap(6).text_size(11).text_color(t.dim)
+      .child(h_flex().px(6).pb(4).gap(6).text_size(sz("xs")).text_color(t.dim)
         .child(div().flex_1().child(this.results.loading ? "Searching…" : this.results.error ?? `${this.results.rows.length}${this.results.more ? "+" : ""} matches for “${this.results.q}”`))
         .child(button("files-results-close", "×", t, (_e, cx) => { this.results = null; this.search.set_value(""); cx.notify(); }, { name: "Close search" })))
       .children(this.results.rows.map((r, i) => v_flex().id(`hit-${i}`).flex_none().px(8).py(3).rounded(6).cursor_pointer().hover(s => s.bg(t.hover))
         .on_click((_e, cx) => this.open(r.path, { line: r.line, word: this.results.q }, cx))
-        .child(h_flex().gap(6).items_center().child(div().flex_1().min_w(0).text_size(11).text_color(t.muted).truncate().child(`${r.path}:${r.line}`))
+        .child(h_flex().gap(6).items_center().child(div().flex_1().min_w(0).text_size(sz("xs")).text_color(t.muted).truncate().child(`${r.path}:${r.line}`))
           .child(button(`hit-replace-${i}`, "Replace", t, (_e, cx) => this.replaceHits([r], cx), { enabled: !this.replacing })))
-        .child(div().text_size(12).truncate().font_family(settings().font_family ?? "JetBrains Mono").child(r.text))));
+        .child(div().text_size(sz("sm")).truncate().font_family(settings().font_family ?? "JetBrains Mono").child(r.text))));
     const hitFiles = this.results ? new Set(this.results.rows.map((r) => r.path)).size : 0;
     const replaceBar = this.results && !this.results.loading && this.results.rows.length > 0 && h_flex().flex_none().px(10).pb(6).gap(6).items_center().border_b(1).border_color(t.border)
       .child(textInput("files-replace", this.replaceWith, this.typing === "replace", t))
@@ -295,9 +296,9 @@ export default class Files extends View {
       // A click anywhere in the tree (a row too) closes an open menu; the menu row stops its own clicks.
       .on_mouse_down("left", (_e, cx) => { if (this.menu) { this.menu = null; this.nameAction = null; cx.notify(); } })
       .when(this.menu?.path === "", el => el.child(this.menuRow(t))).children(this.treeRows("", 0, [], t))
-      .when(Boolean(this.error) || !this.entries.get("")?.length, el => el.child(div().p(8).text_size(12).text_color(t.dim).child(this.error || (this.loading ? "Loading files…" : this.root ? "No files" : "No folder"))))
-      .when(this.limited, el => el.child(div().p(8).text_size(11).text_color(t.dim).child("File list limited to 500 entries per folder and 5,000 total")));
-    return framed(v_flex().id("my-files").size_full().min_h(0).overflow_hidden().bg(t.background), t).text_color(t.foreground).text_size(13)
+      .when(Boolean(this.error) || !this.entries.get("")?.length, el => el.child(div().p(8).text_size(sz("sm")).text_color(t.dim).child(this.error || (this.loading ? "Loading files…" : this.root ? "No files" : "No folder"))))
+      .when(this.limited, el => el.child(div().p(8).text_size(sz("xs")).text_color(t.dim).child("File list limited to 500 entries per folder and 5,000 total")));
+    return framed(v_flex().id("my-files").size_full().min_h(0).overflow_hidden().bg(t.background), t).text_color(t.foreground).text_size(sz("md"))
       .track_focus(this.handle).key_context("MyFiles").on_action("my-files-find", (_e, cx) => this.openFind(cx)).on_key_down((e, cx) => this.key(e, cx)).on_size_change(({ width }, cx) => trackWidth(this, width, cx))
       .child(header)
       .when(!file, el => el.child(h_flex().flex_none().px(10).py(6).when(!replaceBar, e => e.border_b(1).border_color(t.border)).child(textInput("files-search", this.search, this.typing === "search", t))))
@@ -305,9 +306,9 @@ export default class Files extends View {
       .when(Boolean(fileBar), el => el.child(fileBar))
       .when(Boolean(replaceInBar), el => el.child(replaceInBar))
       .when(Boolean(confirm), el => el.child(confirm))
-      .when(Boolean(this.note), el => el.child(div().px(12).py(4).text_size(11).text_color(/^(Saved|Replaced|Created|Renamed|Deleted)/.test(this.note) ? t.ansi2 : this.note.endsWith("…") ? t.dim : t.ansi1).child(this.note)))
+      .when(Boolean(this.note), el => el.child(div().px(12).py(4).text_size(sz("xs")).text_color(/^(Saved|Replaced|Created|Renamed|Deleted)/.test(this.note) ? t.ansi2 : this.note.endsWith("…") ? t.dim : t.ansi1).child(this.note)))
       .child(file ? this.fileBody(t) : results || tree)
-      .child(div().flex_none().px(12).py(4).border_t(1).border_color(t.border).text_size(11).text_color(t.dim).truncate()
+      .child(div().flex_none().px(12).py(4).border_t(1).border_color(t.border).text_size(sz("xs")).text_color(t.dim).truncate()
         .child(file ? "ctrl+s save · ctrl+f find · ctrl+h replace · right-click: send code · esc chat" : "click: open · right-click: @chat, new, rename, delete · drag: path to a terminal · / search"));
   }
 }

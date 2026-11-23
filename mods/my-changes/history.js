@@ -2,7 +2,7 @@
 import { div } from "gpui-kit";
 import { v_flex, h_flex } from "gpui-base";
 import { settings } from "herdr";
-import { READ, git, toLines, diffRows, button, textInput, menuBox, nameForm, confirmButton } from "./common.js";
+import { READ, git, toLines, diffRows, button, textInput, menuBox, nameForm, confirmButton, sz } from "./common.js";
 import { layoutGraph } from "./graph.js";
 import { MAX_LINES, LOG_PAGE } from "./status.js";
 
@@ -140,7 +140,7 @@ export const historyMethods = {
     const width = q ? 0 : PAD * 2 + LANE * Math.min(MAX_LANES, Math.max(1, ...this.log.map((r) => r.width)));
     const shown = (l) => Math.min(l[0], l[1]) < MAX_LANES; // lines further right are cut off: not built
     const picked = this.log.find((r) => r.hash === this.picked);
-    const pill = (id, text, fg, bg, border) => div().id(id).flex_none().h(18).px(6).flex().items_center().rounded(9).text_size(11)
+    const pill = (id, text, fg, bg, border) => div().id(id).flex_none().h(18).px(6).flex().items_center().rounded(9).text_size(sz("logS"))
       .text_color(fg).bg(bg).when(Boolean(border), (e) => e.border_1().border_color(border)).child(text);
     const row = (r) => {
       const c = paint(r.color), x = laneX(r.col), merge = r.parents.length > 1;
@@ -157,15 +157,15 @@ export const historyMethods = {
         .children(r.refs.remote.map((b) => pill(`ref-${r.hash}-${b}`, b, c, c + "14", c + "80")))
         .children(r.refs.tags.map((b) => pill(`tag-${r.hash}-${b}`, b, t.ansi3, t.ansi3 + "1f")))
         .child(div().flex_1().min_w(0).truncate().text_color(merge ? t.muted : t.foreground).child(r.subject))
-        .child(div().flex_none().text_size(11).text_color(t.dim).child(`${r.author} · ${r.when}`));
+        .child(div().flex_none().text_size(sz("logS")).text_color(t.dim).child(`${r.author} · ${r.when}`));
     };
     return [
       h_flex().flex_none().px(10).pt(6).child(textInput("log-search", this.logSearch, this.typing === "log", t)),
-      h_flex().flex_none().px(10).py(6).gap(5).items_center().flex_wrap().border_b(1).border_color(t.border).text_size(12)
+      h_flex().flex_none().px(10).py(6).gap(5).items_center().flex_wrap().border_b(1).border_color(t.border).text_size(sz("logM"))
         .child(div().text_color(t.dim).child(q ? `${rows.length} of the last 500 commits` : "Right-click a commit for its actions · double-click: its changes")),
       // A page at a time: every row and graph line is drawn again on each redraw of the window.
       // The right-clicked commit's actions open in a row just under it, like the Files menu.
-      v_flex().id("log").flex_1().min_h(0).overflow_y_scrollbar().text_size(12)
+      v_flex().id("log").flex_1().min_h(0).overflow_y_scrollbar().text_size(sz("logM"))
         .children(rows.slice(0, this.logShown).flatMap((r) => r.hash === this.riskyFor && picked?.hash === r.hash
           // A press anywhere else closes it; a right-click on a row then opens that row's menu.
           ? [row(r), menuBox("log-menu", t, this.logActions(r, t), (cx) => { this.riskyFor = null; this.confirm = null; cx.notify(); }).mx(6)]
