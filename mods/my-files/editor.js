@@ -26,10 +26,11 @@ export function parseBlame(out) {
 export const editorMethods = {
   dirty() { return Boolean(this.code && !this.readonly && this.code.value() !== this.shown); },
 
-  close() {
+  close(keepFull) {
     this.code?.release(); this.code = null; this.editing = false; this.file = null; this.fileError = null; this.mode = "edit";
     this.rows = null; this.note = null; this.confirmClose = false; this.codeMenu = null; this.findAt = null;
     this.table = null; this.sepIn.set_value(""); // the next CSV finds its own separator
+    if (!keepFull) this.setFull(false); // closed for good: the panels come back (open() keeps full: it only swaps the file)
   },
 
   // CSV / TSV: the open file as a table (Find filters its rows, Separator splits it).
@@ -71,7 +72,7 @@ export const editorMethods = {
     // file opened again (a workspace switch back, which closes it first) keeps it.
     if (path !== this.findFor) { this.find.set_value(""); this.showReplace = false; }
     this.findFor = path;
-    this.close(); this.file = path;
+    this.close(true); this.file = path;
     if (!cx) return;
     const context = this.context, full = this.full(path), on = this.on;
     cx.spawn(async cx => {

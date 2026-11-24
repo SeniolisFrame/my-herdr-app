@@ -140,7 +140,9 @@ rm -rf "$APP/mods/my-files" "$APP/mods/my-changes" "$APP/mods/my-board" "$APP/la
 
 - Click a folder to open it, a file to edit it. A folder opened once (and the
   folders inside the one you open) shows at once next time. `ctrl+s` saves, `←` closes it (it
-  asks first when there are unsaved edits), `esc` goes to the chat.
+  asks first when there are unsaved edits), `esc` goes to the chat. `⤢` shows the open
+  file over the whole window (the band on top, the chat and Changes hidden); `⤡`, `esc` or
+  closing the file brings them back.
   Files keep their line endings (CRLF stays CRLF). When the open file changes on disk
   (a discard in Changes, the chat editing it), it shows the new text, unless you
   have unsaved edits: Save then refuses, so nothing is overwritten. Files over 400 KB and files on
@@ -266,7 +268,7 @@ Both panels take commands, so you can bind keys in `~/.config/herdr-app/keys.jso
 or script them: `herdr-app do my-changes.pull`.
 
 - Both: `fold` (fold the panel, or open it again)
-- `my-files.<cmd>`: `sync`, `toggle:<folder>`, `open:<path>[:<line>]`, `save`, `close`, `find:<text>` (again: the next match), `find-box` (as ctrl+f),
+- `my-files.<cmd>`: `full` (the open file over the whole window, or back), `sync`, `toggle:<folder>`, `open:<path>[:<line>]`, `save`, `close`, `find:<text>` (again: the next match), `find-box` (as ctrl+f),
   `replace-in-file:<text>|<new>`, `search:<text>`, `replace-all:<new>`, `blame`,
   `history`, `send[:<path>]`, `send-code`, `table`, `separator:<s>`, `type:<text>`, `menu:<path>` then `new-file:<name>`,
   `new-folder:<name>`, `rename:<name>` or `delete` (deletes at once:
