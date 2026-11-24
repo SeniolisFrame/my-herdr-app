@@ -5,7 +5,7 @@ $ErrorActionPreference = "Stop"
 $app = if ($env:HERDR_APP_HOME) { $env:HERDR_APP_HOME } else { Join-Path $HOME ".config\herdr-app" }
 if (-not (Test-Path $app)) { throw "herdr-app folder not found: $app (start herdr-app once first)" }
 
-foreach ($mod in "my-files", "my-changes") {
+foreach ($mod in "my-files", "my-changes", "my-board") {
   # A mod can't import from outside its folder: each gets its own copy of shared/*.js
   # (in the repo too, git-ignored, so the repo's mod folders run as they are).
   Copy-Item (Join-Path $PSScriptRoot "shared\*.js") (Join-Path $PSScriptRoot "mods\$mod") -Force

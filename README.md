@@ -5,6 +5,8 @@ client around your chat pane. It is the desktop version of
 [my-herdr](https://github.com/SeniolisFrame/my-herdr), the plugin for the herdr TUI:
 
 ```
+ Spaces           │ Needs you │ Working │ Done │ Idle     ← every agent as a card, click to go there
+ ─────────────────┴───────────┴─────────┴──────┴──────
  Files            │ chat (your agent) │ Changes
  file tree, edit, │                   │ stage files or hunks, commit,
  search, blame,   │                   │ branches, merge, pull, push,
@@ -46,8 +48,8 @@ powershell -ExecutionPolicy Bypass -File install.ps1
 It prints `Installed.` and the window switches to the my-herdr layout: Files on
 the left, your terminal in the middle, Changes on the right.
 
-`install.ps1` copies `mods/my-files` and `mods/my-changes` into
-`~/.config/herdr-app/mods` (test files left out), checks both mods with
+`install.ps1` copies `mods/my-files`, `mods/my-changes` and `mods/my-board` into
+`~/.config/herdr-app/mods` (test files left out), checks each mod with
 `herdr-app check`, copies `layouts/my-herdr.json` into `~/.config/herdr-app/layouts`
 and switches to it. The copy replaces the whole layout, so it then runs every `*.ps1` in
 `~/.config/herdr-app/after-layout` with the layout's path: a theme that changes the
@@ -62,9 +64,10 @@ to that folder first.
 git clone https://github.com/SeniolisFrame/my-herdr-app
 cd my-herdr-app
 APP="${HERDR_APP_HOME:-$HOME/.config/herdr-app}"
-for m in my-files my-changes; do
+for m in my-files my-changes my-board; do
   mkdir -p "$APP/mods/$m"
-  cp shared/common.js mods/$m/*.js mods/$m/*.svg mods/$m/mod.json "$APP/mods/$m/"   # not the *.test.mjs files
+  cp shared/*.js mods/$m/*.js mods/$m/mod.json "$APP/mods/$m/"   # not the *.test.mjs files
+  cp mods/$m/*.svg "$APP/mods/$m/" 2>/dev/null                    # my-board has none
   [ -d mods/$m/icons ] && cp -r mods/$m/icons "$APP/mods/$m/"
   herdr-app check "$APP/mods/$m"     # must say: check passed
 done
@@ -99,7 +102,7 @@ in the repo until you install again (it watches its own folder, not links).
 
 ### Uninstall
 
-On Windows, this removes both mods and the layout and switches back to `main`
+On Windows, this removes the three mods and the layout and switches back to `main`
 (the repo folder stays):
 
 ```powershell
@@ -111,7 +114,7 @@ On macOS and Linux:
 ```sh
 APP="${HERDR_APP_HOME:-$HOME/.config/herdr-app}"
 herdr-app do layout.switch --name main
-rm -rf "$APP/mods/my-files" "$APP/mods/my-changes" "$APP/layouts/my-herdr.json"
+rm -rf "$APP/mods/my-files" "$APP/mods/my-changes" "$APP/mods/my-board" "$APP/layouts/my-herdr.json"
 ```
 
 ### If something goes wrong
@@ -175,6 +178,16 @@ rm -rf "$APP/mods/my-files" "$APP/mods/my-changes" "$APP/layouts/my-herdr.json"
   terminal) without Enter. It goes through the clipboard and puts your clipboard
   back. Dragging a file onto a terminal pastes its full path.
 - A letter shows git status: `M` modified, `A` new, `D` deleted, `U` conflict.
+
+### Board (top)
+
+The top band holds what herdr keeps in its left sidebar: Spaces, Settings and Add
+machine on the left, and in place of the Agents list a board: every agent in every space
+as a card in four columns, Needs you, Working, Done and Idle, each with its count. A card
+shows the agent's program, its space (or pane name) and tab; hover for the address, click
+to go to it. The focused agent's card is outlined, and the next / previous agent keys go
+column by column. Colors are the theme's status colors. Drag the line under the band to
+make it taller.
 
 ### Changes (right)
 
@@ -307,7 +320,8 @@ other files add its methods by job (`Object.assign(<Class>.prototype, ...)`).
 | `mods/my-changes/status.js` | limits and the status-list helpers |
 | `mods/my-changes/patch.js` | patches for staging hunks and single lines (test: `node mods/my-changes/patch.test.mjs`) |
 | `mods/my-changes/graph.js` | history graph lanes (test: `node mods/my-changes/graph.test.mjs`) |
-| `layouts/my-herdr.json` | herdr's `main` layout with Files left and Changes right |
+| `mods/my-board/main.js` | Board: the agent cards in the top band |
+| `layouts/my-herdr.json` | herdr's `main` layout with Files left, Changes right, and Spaces with the Board in a band on top |
 | `install.ps1`, `uninstall.ps1` | copy into / remove from `~/.config/herdr-app` |
 
 A mod can't import from outside its own folder, so `install.ps1` copies
