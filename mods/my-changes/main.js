@@ -284,6 +284,9 @@ export default class Changes extends View {
       cx.notify();
       return;
     }
+    // Ctrl+C (Cmd+C) in History: the picked commit's hash (in a commit's changes, that commit's), as the menu's Copy hash.
+    const hash = (e.modifiers.control || e.modifiers.platform) && k === "c" && !this.typing && (this.view === "log" ? this.picked : this.view === "commit" ? this.shown : null);
+    if (hash) { cx.stop_propagation(); cx.write_to_clipboard(hash); this.note = { text: `Copied ${hash.slice(0, 7)}` }; cx.notify(); return; }
     if (this.typing || e.modifiers.control || e.modifiers.alt || e.modifiers.platform) return;
     const items = this.items(), i = items.findIndex((x) => x.path === this.sel?.path && x.side === this.sel?.side);
     const act = {

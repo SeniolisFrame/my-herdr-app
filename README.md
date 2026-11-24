@@ -235,7 +235,7 @@ make it taller.
   **Merge … into** and **Delete** for each branch on it (a branch with commits no
   other branch has asks again as **Force delete**), **Checkout commit** / **Merge**
   for a commit with no branch, **Cherry-pick onto** the current branch, **Revert**,
-  **Copy hash**. Double-click opens its changes.
+  **Copy hash** (or `Ctrl+C`, also in a commit's changes). Double-click opens its changes.
   **New branch here…** asks for a name (as Files' New file does) and **Create** (or
   Enter) makes a branch at that commit and switches to it.
   **New tag here…** does the same for a lightweight tag on
