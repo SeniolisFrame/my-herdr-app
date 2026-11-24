@@ -4,7 +4,7 @@
     "titlebar": "none",
     "traffic_lights": [
         12,
-        16
+        58
     ],
     "background": "canvas",
     "terminal_padding": [
@@ -16,6 +16,19 @@
         "color": "border"
     },
     "children": [
+        {
+            "id": "tabs",
+            "type": "block",
+            "size": {
+                "px": 42
+            },
+            "min": 42,
+            "max": 42,
+            "window_drag": true,
+            "content": {
+                "mod": "tabs"
+            }
+        },
         {
             "id": "top",
             "type": "row",
@@ -83,17 +96,6 @@
             "type": "column",
             "resizable": false,
             "children": [
-                {
-                    "id": "tabs",
-                    "type": "block",
-                    "size": {
-                        "px": 42
-                    },
-                    "window_drag": true,
-                    "content": {
-                        "mod": "tabs"
-                    }
-                },
                 {
                     "id": "work-body",
                     "type": "row",
