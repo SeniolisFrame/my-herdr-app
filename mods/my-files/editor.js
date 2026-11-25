@@ -72,7 +72,7 @@ export const editorMethods = {
     // file opened again (a workspace switch back, which closes it first) keeps it.
     if (path !== this.findFor) { this.find.set_value(""); this.showReplace = false; }
     this.findFor = path;
-    this.close(true); this.file = path;
+    this.close(true); this.file = path; this.setFull(true); // an open file always takes the whole window
     if (!cx) return;
     const context = this.context, full = this.full(path), on = this.on;
     cx.spawn(async cx => {

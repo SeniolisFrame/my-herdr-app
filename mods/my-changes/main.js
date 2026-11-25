@@ -5,7 +5,7 @@
 import { View, div } from "gpui-kit";
 import { v_flex, h_flex, InputState } from "gpui-base";
 import { exec, readTextFile, theme, nextCommand } from "herdr";
-import { framed, location, locationKey, READ, git, toLines, watchWhile, sendToChat, focusChat, untab, diffRows, button, foldPanel, trackWidth, foldedStrip, confirmButton, sz, loadTextSizes } from "./common.js";
+import { framed, location, locationKey, READ, git, toLines, watchWhile, sendToChat, focusChat, untab, diffRows, button, foldPanel, trackWidth, foldedStrip, confirmButton, sz, loadTextSizes, isFull, setFull } from "./common.js";
 import { splitDiff } from "./patch.js";
 import { MAX_FILES, MAX_LINES, PREFETCH_LINES, LOG_PAGE, IN_PROGRESS, sides } from "./status.js";
 import { actionsMethods } from "./actions.js";
@@ -55,6 +55,8 @@ export default class Changes extends View {
     const run = {
       focus: () => this.handle.focus(),
       fold: () => foldPanel(this, "changes", !this.folded), // fold into a strip, or open again
+      // Not over a file open in Files: hidden there, it would come back in a small panel.
+      full: () => !isFull("files") && this.setFull(!this.isFull()), // the lists and diff over the whole window, or back
       // select:<path>, or select:staged:<path> / select:unstaged:<path> for one list
       select: () => {
         const m = /^(staged|unstaged):(.*)$/.exec(arg), p = m ? m[2] : arg;
@@ -104,6 +106,9 @@ export default class Changes extends View {
     const text = (gitDir && this.typed.get(gitDir)) || "";
     this.message.set_value(text); this.hasMessage = Boolean(text.trim()); this.boxFor = gitDir;
   }
+
+  isFull() { return isFull("changes"); }
+  setFull(on) { setFull(this, "changes", on); }
 
   git(args, timeout) { return git(this.root, this.on, args, timeout); }
 
@@ -280,6 +285,7 @@ export default class Changes extends View {
       else if (this.menu || this.confirm || this.riskyFor || this.mergeFor || this.hunkMenu) { this.menu = null; this.confirm = null; this.riskyFor = null; this.mergeFor = null; this.hunkMenu = null; }
       else if (this.view === "commit") this.view = "log";
       else if (this.view === "log") this.view = "changes";
+      else if (this.isFull()) this.setFull(false); // the chat is hidden: back first
       else focusChat();
       cx.notify();
       return;
@@ -319,7 +325,7 @@ export default class Changes extends View {
   render(cx) {
     if (locationKey() !== this.context) this.refresh(cx);
     this.checkAsk(cx);
-    const t = theme(), f = this.selected(), item = this.sel;
+    const t = theme(), f = this.selected(), item = this.sel, full = this.isFull();
     if (this.folded) return foldedStrip("changes", "«", "Show Changes", t, () => foldPanel(this, "changes", false))
       .id("my-changes").on_size_change(({ width }, cx) => trackWidth(this, width, cx));
     // Lists that fill the panel stay direct children of the root: one more flex level
@@ -331,24 +337,25 @@ export default class Changes extends View {
         this.commitRows ? this.diffView("commit-diff", this.commitRows, t, false) : div().p(12).text_color(t.dim).child("Loading commit…")]
       : !this.root ? div().p(12).text_color(t.dim).child(this.error ?? (this.loading ? "Loading…" : "No folder"))
       : [
-        ...this.fileList("unstaged", t),
+        ...this.fileList("unstaged", t, !full), // Staged keeps its few rows: it is short most of the time
         ...this.fileList("staged", t),
-        f ? h_flex().flex_none().px(10).py(4).gap(6).items_center().border_t(1).border_b(1).border_color(t.border)
+        // The diff shows only over the whole window; beside the chat the panel is just the lists.
+        f && full ? h_flex().flex_none().px(10).py(4).gap(6).items_center().border_t(1).border_b(1).border_color(t.border)
           .child(div().flex_1().min_w(0).truncate().text_size(sz("sm")).font_semibold().child(`${f.path}${item.side === "staged" ? " (staged)" : ""}`))
           .child(button("open", "Open", t, () => this.openInFiles(f.path)))
           .when(f.conflict, (e) => e.child(button("ours", "Ours", t, (_e, cx) => this.resolve(f, "ours", cx), { name: "Use your version of the whole file" }))
             .child(button("theirs", "Theirs", t, (_e, cx) => this.resolve(f, "theirs", cx), { name: "Use the incoming version of the whole file" }))
             .child(button("resolved", "Mark resolved", t, (_e, cx) => this.toggleFile(item, cx))))
           .when(!f.conflict, (e) => e.child(confirmButton("discard", "Discard", this.confirm?.path === f.path, t, (_e, cx) => this.discard(f, cx))))
-          : div().flex_1(),
-        this.diffView("changes-diff", this.rows, t, true)];
+          : full ? div().flex_1() : null,
+        ...(full ? [this.diffView("changes-diff", this.rows, t, true)] : [])];
     return framed(v_flex().id("my-changes").size_full().min_h(0).overflow_hidden().bg(t.background), t).text_color(t.foreground).text_size(sz("md"))
       .track_focus(this.handle).on_key_down((e, cx) => this.key(e, cx)).on_size_change(({ width }, cx) => trackWidth(this, width, cx))
       .child(this.tabs(t))
       .when(Boolean(this.root), (e) => e.child(this.toolbar(t)))
       .when(Boolean(this.note?.text), (e) => e.child(h_flex().flex_none().px(12).py(4).gap(6).text_size(sz("xs")).text_color(this.note.error ? t.ansi1 : t.ansi2)
         .child(div().flex_1().child(this.note.text)).child(button("note-close", "×", t, (_e, cx) => { this.note = null; cx.notify(); }, { name: "Close message" }))))
-      .children([body].flat())
+      .children([body].flat().filter(Boolean))
       .when(this.view === "changes" && !this.menu && Boolean(this.root), (e) => e.child(this.commitBox(t)));
   }
 }

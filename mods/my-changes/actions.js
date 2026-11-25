@@ -133,7 +133,8 @@ export const actionsMethods = {
   },
 
   // Files opens the file (my-files watches this shared value).
-  openInFiles(path) { setShared("my-files.open", { path: `${this.root}/${path}`, n: Date.now() }); },
+  // Files must show to take the request (a hidden panel doesn't draw); it then takes the whole window.
+  openInFiles(path) { this.setFull(false); setShared("my-files.open", { path: `${this.root}/${path}`, n: Date.now() }); },
 
   commit(cx) {
     const message = this.message.value().trim(), staged = this.files.some((f) => sides(f).some((x) => x.side === "staged"));

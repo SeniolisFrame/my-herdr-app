@@ -138,11 +138,10 @@ rm -rf "$APP/mods/my-files" "$APP/mods/my-changes" "$APP/mods/my-board" "$APP/la
 
 ### Files (left)
 
-- Click a folder to open it, a file to edit it. A folder opened once (and the
-  folders inside the one you open) shows at once next time. `ctrl+s` saves, `←` closes it (it
-  asks first when there are unsaved edits), `esc` goes to the chat. `⤢` shows the open
-  file over the whole window (the band on top, the chat and Changes hidden); `⤡`, `esc` or
-  closing the file brings them back.
+- Click a folder to open it; double-click a file (or a search result) to edit it. An open file
+  takes the whole window (the band on top, the chat and Changes hidden). A folder opened once (and the
+  folders inside the one you open) shows at once next time. `ctrl+s` saves, `←` or `esc` closes it (it
+  asks first when there are unsaved edits) and brings the panels back.
   Files keep their line endings (CRLF stays CRLF). When the open file changes on disk
   (a discard in Changes, the chat editing it), it shows the new text, unless you
   have unsaved edits: Save then refuses, so nothing is overwritten. Files over 400 KB and files on
@@ -207,8 +206,10 @@ make it taller.
   menu then says **Stage 2 lines** and stages only those. **Discard hunk** (or
   **Discard 2 lines**, click twice) throws them out of the file; what is staged
   stays, and the file keeps its line endings.
-- **Open** (or double-click the file) opens it in Files. **Discard** throws away
+- **Open** (or `o`) opens it in Files. **Discard** throws away
   the file's changes (click twice).
+- The diff shows only with Changes over the whole window: double-click a file and it fills the
+  window, the lists on top, so a click or `↑` `↓` moves to the next file's diff. **← Back** (top left) or `Esc` goes back.
 - Type a message and **Commit** (commits what is staged).
   - **Amend**: the next Commit rewrites the last commit; its message is filled in
     to edit, and whatever is staged goes into it too.
@@ -237,7 +238,7 @@ make it taller.
   **Merge … into** and **Delete** for each branch on it (a branch with commits no
   other branch has asks again as **Force delete**), **Checkout commit** / **Merge**
   for a commit with no branch, **Cherry-pick onto** the current branch, **Revert**,
-  **Copy hash** (or `Ctrl+C`, also in a commit's changes). Double-click opens its changes.
+  **Copy hash** (or `Ctrl+C`, also in a commit's changes). **Copy message** copies its whole message. Double-click opens its changes.
   **New branch here…** asks for a name (as Files' New file does) and **Create** (or
   Enter) makes a branch at that commit and switches to it.
   **New tag here…** does the same for a lightweight tag on
@@ -268,12 +269,12 @@ Both panels take commands, so you can bind keys in `~/.config/herdr-app/keys.jso
 or script them: `herdr-app do my-changes.pull`.
 
 - Both: `fold` (fold the panel, or open it again)
-- `my-files.<cmd>`: `full` (the open file over the whole window, or back), `sync`, `toggle:<folder>`, `open:<path>[:<line>]`, `save`, `close`, `find:<text>` (again: the next match), `find-box` (as ctrl+f),
+- `my-files.<cmd>`: `sync`, `toggle:<folder>`, `open:<path>[:<line>]`, `save`, `close`, `find:<text>` (again: the next match), `find-box` (as ctrl+f),
   `replace-in-file:<text>|<new>`, `search:<text>`, `replace-all:<new>`, `blame`,
   `history`, `send[:<path>]`, `send-code`, `table`, `separator:<s>`, `type:<text>`, `menu:<path>` then `new-file:<name>`,
   `new-folder:<name>`, `rename:<name>` or `delete` (deletes at once:
   the menu's Delete button asks twice, the command doesn't)
-- `my-changes.<cmd>`: `sync`, `select:<path>` (or `select:staged:<path>` /
+- `my-changes.<cmd>`: `full` (the lists and diff over the whole window, or back), `sync`, `select:<path>` (or `select:staged:<path>` /
   `select:unstaged:<path>`), `stage`, `stage-all`, `unstage-all`, `hunk:<n>`,
   `discard-hunk:<n>` (twice), `line:<hunk>:<line>`, `discard`, `open`, `ours`, `theirs`, `commit[:<message>]`,
   `amend`, `undo` (twice), `ask`, `fetch`, `pull`, `push`, `stash`, `pop`, `abort`,

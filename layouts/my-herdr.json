@@ -150,7 +150,7 @@
                                 "px": 460
                             },
                             "min": 36,
-                            "max": 1000,
+                            "max": 4000,
                             "content": {
                                 "mod": "my-changes"
                             }

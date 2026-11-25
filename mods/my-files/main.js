@@ -2,19 +2,14 @@
 // search every file, see blame and history, and send @path to the chat.
 import { View, div, svg, image } from "gpui-kit";
 import { v_flex, h_flex, Editor, InputState } from "gpui-base";
-import { theme, settings, nextCommand, shared, layout, run } from "herdr";
-import { framed, locationKey, focusChat, diffRow, button, iconButton, buttonGroup, textInput, lazyRows, foldPanel, trackWidth, foldedStrip, menuBox, sz, loadTextSizes } from "./common.js";
+import { theme, settings, nextCommand, shared } from "herdr";
+import { framed, locationKey, focusChat, diffRow, button, iconButton, buttonGroup, textInput, lazyRows, foldPanel, trackWidth, foldedStrip, menuBox, sz, loadTextSizes, isFull, setFull } from "./common.js";
 import { TOTAL } from "./tree.js";
 import { iconFor } from "./icons.js";
 import { blameBlocks, ago, hitSegments } from "./text.js";
 import { treeMethods } from "./tree.js";
 import { editorMethods } from "./editor.js";
 import { actionsMethods } from "./actions.js";
-
-// Full window for an open file: the layout's other blocks are hidden and Files takes the room.
-// Hidden is the layout's own state, so it holds across a restart; the layout names these blocks.
-const OTHERS = ["top", "main", "changes"];
-const findNode = (node, id) => node?.id === id ? node : (node?.children ?? []).reduce((hit, c) => hit ?? findNode(c, id), null);
 
 export default class Files extends View {
   init(_props, cx) {
@@ -65,7 +60,6 @@ export default class Files extends View {
     const run = {
       focus: () => this.handle.focus(),
       fold: () => foldPanel(this, "files", !this.folded), // fold into a strip, or open again
-      full: () => this.setFull(!this.isFull()), // the open file over the whole window, or back
       sync: () => this.refresh(cx),
       toggle: () => arg && this.toggle(arg, cx), // open or close a folder
       open: () => { const m = /^(.*?)(?::(\d+))?$/.exec(arg); this.open(m[1], m[2] ? { line: +m[2] } : null, cx); },
@@ -93,13 +87,15 @@ export default class Files extends View {
     run?.();
   }
 
-  isFull() { return Boolean(findNode(layout(), "main")?.hidden); }
-  setFull(on) {
-    if (on === this.isFull() || !findNode(layout(), "main")) return;
-    if (on) this.widthBeforeFull = this.openWidth;
-    for (const id of OTHERS) run(on ? "layout.hide" : "layout.show", { id });
-    run("layout.resize", on ? { id: "files", weight: 1 } : { id: "files", px: this.widthBeforeFull ?? 360 });
+  // Back from a file: the table or blame view first, then the file (unsaved: asks first).
+  back(cx) {
+    if (this.mode !== "edit") { this.mode = "edit"; cx.notify(); return; }
+    if (this.dirty() && !this.confirmClose) { this.confirmClose = true; cx.notify(); return; }
+    this.close(); cx.notify();
   }
+
+  isFull() { return isFull("files"); }
+  setFull(on) { setFull(this, "files", on); }
 
   // --- keys ----------------------------------------------------------------------
 
@@ -115,7 +111,8 @@ export default class Files extends View {
       else if (this.codeMenu) this.codeMenu = null; // the right-click Send to chat menu
       else if (this.menu) { this.menu = null; this.nameAction = null; }
       else if (this.mode !== "edit") this.mode = "edit";
-      else if (this.isFull()) this.setFull(false); // the chat is hidden: back first
+      else if (this.file) this.back(cx); // the file is the whole window: Esc closes it (asks first if unsaved)
+      else if (this.isFull()) this.setFull(false);
       else focusChat();
       cx.notify();
       return;
@@ -137,7 +134,7 @@ export default class Files extends View {
       const path = prefix ? `${prefix}/${entry.name}` : entry.name, open = this.folders.has(path), mark = this.mark(path);
       out.push(h_flex().id(`file-${path}`).h(26).flex_none().pl(8 + depth * 16).pr(8).gap(7).items_center().rounded(6).cursor_pointer().hover(s => s.bg(t.hover))
         .drag_paths([`${this.root}/${path}`], { on: this.on })
-        .on_click((_e, cx) => { if (entry.dir) this.toggle(path, cx); else this.open(path, null, cx); })
+        .on_click((e, cx) => { if (entry.dir) this.toggle(path, cx); else if (e.click_count > 1) this.open(path, null, cx); }) // a file: double-click, it takes the window
         .on_mouse_down("right", (_e, cx) => { cx.stop_propagation(); this.openMenu(path, cx); })
         .child(entry.dir ? svg(`mods/my-files/icon-caret-${open ? "down" : "right"}.svg`).size(12).flex_none().text_color(t.dim) : div().w(12).flex_none())
         .child(image(iconFor(entry.name, entry.dir, open)).size(16).flex_none())
@@ -245,26 +242,23 @@ export default class Files extends View {
     const asked = shared("my-files.open");
     if (asked?.n && asked.n !== this.openRequest && this.root) {
       this.openRequest = asked.n;
+      if (this.folded) foldPanel(this, "files", false); // folded: open to show it (first: the open's full window then wins)
       if (this.dirty()) this.note = "Save or close the open file first";
       else this.open(this.rel(asked.path), null, cx);
-      if (this.folded) foldPanel(this, "files", false); // folded: open to show it
     }
     const t = theme(), file = this.file, dirty = this.dirty(), full = this.isFull();
     if (this.folded) return foldedStrip("files", "»", "Show Files", t, () => foldPanel(this, "files", false))
       .id("my-files").on_size_change(({ width }, cx) => trackWidth(this, width, cx));
     const tool = (id, icon, name, onClick, opts) => iconButton(`files-${id}`, `mods/my-files/icon-${icon}.svg`, name, t, onClick, { iconOnly: !this.wide, ...opts });
     const header = h_flex().h(42).flex_none().px(12).gap(6).items_center().border_b(1).border_color(t.border)
-      .when(Boolean(file), el => el.child(tool("back", "back", "Back", (_e, cx) => {
-        if (this.mode !== "edit") { this.mode = "edit"; cx.notify(); return; }
-        if (dirty && !this.confirmClose) { this.confirmClose = true; cx.notify(); return; }
-        this.close(); cx.notify();
-      }, { iconOnly: true })))
+      .when(Boolean(file), el => el.child(tool("back", "back", "Back (Esc)", (_e, cx) => this.back(cx), { iconOnly: true })))
       .child(div().font_semibold().child("Files"))
       .child(div().flex_1().min_w(0).truncate().text_right().text_size(sz("sm")).text_color(dirty ? t.blocked : t.dim)
         .child(file ? `${file}${dirty ? " ●" : ""}` : this.root?.split(/[\\/]/).pop() ?? ""))
       .when(!file && Boolean(this.root), el => el.child(tool("sync", "sync", "Sync", (_e, cx) => this.refresh(cx), { enabled: !this.loading, iconOnly: true }))
         .child(button("files-new", "+", t, (_e, cx) => this.openMenu("", cx), { active: this.menu?.path === "", name: "New file or folder" })))
-      .when(Boolean(file) || full, el => el.child(button("files-full", full ? "⤡" : "⤢", t, () => this.setFull(!full), { active: full, name: full ? "Back to the panels (Esc)" : "Full window" })))
+      // No file over the whole window (left so by a restart): a way back to the panels.
+      .when(!file && full, el => el.child(button("files-full", "⤡", t, () => this.setFull(false), { active: true, name: "Back to the panels (Esc)" })))
       .when(!full, el => el.child(button("files-fold", "«", t, () => foldPanel(this, "files", true), { name: "Hide Files" })));
     // The find box gets a row of its own; too narrow for the names, the buttons show icons only.
     const fileBar = file && v_flex().flex_none().px(10).py(6).gap(6).when(!this.showReplace, el => el.border_b(1).border_color(t.border))
@@ -299,7 +293,7 @@ export default class Files extends View {
         .child(div().flex_1().child(this.results.loading ? "Searching…" : this.results.error ?? `${this.results.rows.length}${this.results.more ? "+" : ""} matches for “${this.results.q}”`))
         .child(button("files-results-close", "×", t, (_e, cx) => { this.results = null; this.search.set_value(""); cx.notify(); }, { name: "Close search" })))
       .children(this.results.rows.map((r, i) => v_flex().id(`hit-${i}`).flex_none().px(8).py(3).rounded(6).cursor_pointer().hover(s => s.bg(t.hover))
-        .on_click((_e, cx) => this.open(r.path, { line: r.line, word: this.results.q }, cx))
+        .on_click((e, cx) => e.click_count > 1 && this.open(r.path, { line: r.line, word: this.results.q }, cx))
         .child(h_flex().gap(6).items_center().child(div().flex_1().min_w(0).text_size(sz("xs")).text_color(t.muted).truncate().child(`${r.path}:${r.line}`))
           .child(button(`hit-replace-${i}`, "Replace", t, (_e, cx) => this.replaceHits([r], cx), { enabled: !this.replacing })))
         .child(div().text_size(sz("sm")).truncate().font_family(settings().font_family ?? "JetBrains Mono").child(r.text))));
@@ -325,7 +319,7 @@ export default class Files extends View {
       .when(Boolean(this.note), el => el.child(div().px(12).py(4).text_size(sz("xs")).text_color(/^(Saved|Replaced|Created|Renamed|Deleted)/.test(this.note) ? t.ansi2 : this.note.endsWith("…") ? t.dim : t.ansi1).child(this.note)))
       .child(file ? this.fileBody(t) : results || tree)
       .child(div().flex_none().px(12).py(4).border_t(1).border_color(t.border).text_size(sz("xs")).text_color(t.dim).truncate()
-        .child(file ? `ctrl+s save · ctrl+f find · ctrl+h replace · right-click: send code · esc ${full ? "back" : "chat"}` : "click: open · right-click: @chat, new, rename, delete · drag: path to a terminal · / search"));
+        .child(file ? `ctrl+s save · ctrl+f find · ctrl+h replace · right-click: send code · esc back` : "double-click: open · right-click: @chat, new, rename, delete · drag: path to a terminal · / search"));
   }
 }
 

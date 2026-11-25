@@ -11,7 +11,7 @@ export const viewMethods = {
     const color = item.letter === "A" || item.letter === "?" ? t.ansi2 : item.letter === "D" || item.letter === "U" ? t.ansi1 : t.blocked;
     return h_flex().id(`change-${item.side}-${item.path}`).h(26).flex_none().px(6).gap(7).items_center().rounded(6).cursor_pointer()
       .when(sel, (e) => e.bg(t.selected)).hover((s) => s.bg(t.hover))
-      .on_click((e, cx) => { if (e.click_count > 1) this.openInFiles(item.path); else this.pick(item, cx); })
+      .on_click((e, cx) => { this.pick(item, cx); if (e.click_count > 1) this.setFull(true); }) // double: its diff, over the whole window
       .on_mouse_down("right", (_e, cx) => { cx.stop_propagation(); this.send(item.path, cx); })
       .child(checkbox(staged, t, f.conflict).id(`box-${item.side}-${item.path}`)
         .on_mouse_down("left", (_e, cx) => cx.stop_propagation())
@@ -22,8 +22,9 @@ export const viewMethods = {
       .when(st?.del > 0, (e) => e.child(div().text_size(sz("xs")).text_color(t.ansi1).child(`−${st.del}`)));
   },
 
-  // One list (Unstaged or Staged) with its header and all-button, at most 6 rows high.
-  fileList(side, t) {
+  // One list (Unstaged or Staged) with its header and all-button, at most 6 rows high;
+  // grow: it takes the room left (beside the chat, where no diff shows).
+  fileList(side, t, grow) {
     const items = this.items().filter((x) => x.side === side), staged = side === "staged";
     return [
       h_flex().flex_none().px(10).pt(6).pb(2).gap(6).items_center().text_size(sz("xs")).text_color(t.dim)
@@ -32,7 +33,7 @@ export const viewMethods = {
           : h_flex().gap(6)
             .child(confirmButton("discard-all", "Discard all", Boolean(this.confirm?.all), t, (_e, cx) => this.discardAll(cx), { enabled: !this.busy && items.length > 0 }))
             .child(button("stage-all", "Stage all", t, (_e, cx) => this.stageAll(cx), { enabled: !this.busy && items.length > 0 }))),
-      div().flex_none().h(Math.min(Math.max(items.length, 1) * 26 + 4, 160)).relative()
+      (grow ? div().flex_1().min_h(0) : div().flex_none().h(Math.min(Math.max(items.length, 1) * 26 + 4, 160))).relative()
         .child(v_flex().id(`list-${side}`).absolute().inset_0().overflow_y_scroll().px(6).children(items.map((x) => this.fileRow(x, t)))
           .when(!items.length, (e) => e.child(div().px(6).py(4).text_size(sz("sm")).text_color(t.dim).child(staged ? "Nothing staged" : "No changes"))))
         .child(Scrollbar.vertical(`list-${side}`).absolute().inset_0()),
@@ -85,7 +86,10 @@ export const viewMethods = {
     const onLog = this.view !== "changes" && !this.menu;
     // » on the edge next to the chat, as Files' « is: both fold buttons sit where the eye is.
     return h_flex().h(40).flex_none().border_b(1).border_color(t.border)
-      .child(div().flex_none().px(8).flex().items_center().border_r(1).border_color(t.border).child(button("changes-fold", "»", t, () => foldPanel(this, "changes", true), { name: "Hide Changes" })))
+      // Over the whole window: Back sits there instead, top left as Files' Back does.
+      .child(div().flex_none().px(8).flex().items_center().border_r(1).border_color(t.border).child(this.isFull()
+        ? button("changes-back", "← Back", t, () => this.setFull(false), { name: "Back to the panels (Esc)" })
+        : button("changes-fold", "»", t, () => foldPanel(this, "changes", true), { name: "Hide Changes" })))
       .child(tab("changes", "Changes", !onLog, (_e, cx) => { this.view = "changes"; this.menu = null; cx.notify(); }, count))
       .child(tab("history", "History", onLog, (_e, cx) => { this.menu = null; if (this.view === "changes") this.openLog(cx); else { this.view = "log"; cx.notify(); } }));
   },

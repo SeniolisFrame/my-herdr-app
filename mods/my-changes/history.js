@@ -102,7 +102,18 @@ export const historyMethods = {
     if (!c.refs.head && this.branch && !this.inProgress) danger.push(confirmButton("log-reset", `Reset ${this.branch} here`, this.confirm?.reset === c.hash, t, (_e, cx) => this.reset(c, cx)));
     return [button("log-view", "View changes", t, (_e, cx) => this.showCommit(c.hash, cx)), ...out,
       button("log-copy", "Copy hash", t, (_e, cx) => { cx.write_to_clipboard(c.hash); this.note = { text: `Copied ${c.short}` }; cx.notify(); }),
+      button("log-copy-message", "Copy message", t, (_e, cx) => this.copyMessage(c, cx)),
       button("log-new-branch", "New branch here…", t, nameIt("branch", this.logBranch)), button("log-new-tag", "New tag here…", t, nameIt("tag", this.tagName)), ...danger];
+  },
+
+  // The whole message (subject and body), not just the subject the list shows.
+  copyMessage(c, cx) {
+    const root = this.root, on = this.on;
+    cx.spawn(async (cx) => {
+      try { cx.write_to_clipboard((await git(root, on, [...READ, "log", "-1", "--format=%B", c.hash])).trim()); this.note = { text: `Copied the message of ${c.short}` }; }
+      catch (e) { this.note = { text: `Not copied: ${e.message ?? e}`, error: true }; }
+      cx.notify();
+    });
   },
 
   showCommit(hash, cx) {

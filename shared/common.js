@@ -130,6 +130,22 @@ export function lazyRows(id, count, row, o = {}) {
 export const FOLDED = 36;
 export function foldPanel(view, node, fold) { run("layout.resize", { id: node, px: fold ? FOLDED : view.openWidth }); }
 
+// Full window for one side panel: the layout's other blocks are hidden and the panel takes the room.
+// Hidden is the layout's own state, so it holds across a restart; the layout names these blocks.
+const PANELS = ["top", "main", "files", "changes"];
+const findNode = (node, id) => node?.id === id ? node : (node?.children ?? []).reduce((hit, c) => hit ?? findNode(c, id), null);
+export const isFull = (node) => { const l = layout(); return Boolean(findNode(l, "main")?.hidden && !findNode(l, node)?.hidden); };
+// The width to go back to is kept in shared state: the other panel may be the one that ends it
+// (Changes' Open shows the file in Files over the whole window, in place of Changes).
+export function setFull(view, node, on) {
+  if (on === isFull(node) || !findNode(layout(), "main")) return;
+  const other = PANELS.find((id) => id !== node && (id === "files" || id === "changes") && isFull(id));
+  if (other) run("layout.resize", { id: other, px: shared(`my-herdr.width.${other}`) ?? (other === "changes" ? 460 : 360) }); // none saved (a restart): the layout's widths
+  if (on) { setShared(`my-herdr.width.${node}`, view.openWidth); run("layout.show", { id: node }); }
+  for (const id of PANELS) if (id !== node) run(on ? "layout.hide" : "layout.show", { id });
+  run("layout.resize", on ? { id: node, weight: 1 } : { id: node, px: shared(`my-herdr.width.${node}`) ?? view.openWidth });
+}
+
 // From the panel root's on_size_change: folded under 80px (a fold, or dragged that thin); the
 // last open width is what unfolding goes back to.
 export function trackWidth(view, width, cx) {
