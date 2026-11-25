@@ -133,8 +133,14 @@ export default class Files extends View {
       if (out.length >= TOTAL) break;
       const path = prefix ? `${prefix}/${entry.name}` : entry.name, open = this.folders.has(path), mark = this.mark(path);
       out.push(h_flex().id(`file-${path}`).h(26).flex_none().pl(8 + depth * 16).pr(8).gap(7).items_center().rounded(6).cursor_pointer().hover(s => s.bg(t.hover))
+        .when(path === this.file, s => s.bg(t.selected))
         .drag_paths([`${this.root}/${path}`], { on: this.on })
-        .on_click((e, cx) => { if (entry.dir) this.toggle(path, cx); else if (e.click_count > 1) this.open(path, null, cx); }) // a file: double-click, it takes the window
+        .on_click((e, cx) => {
+          if (entry.dir) this.toggle(path, cx);
+          else if (e.click_count < 2 || path === this.file) return; // a file: double-click, it takes the window
+          else if (this.dirty()) { this.note = "Save or close the open file first"; cx.notify(); } // open() would drop the edits
+          else this.open(path, null, cx);
+        })
         .on_mouse_down("right", (_e, cx) => { cx.stop_propagation(); this.openMenu(path, cx); })
         .child(entry.dir ? svg(`mods/my-files/icon-caret-${open ? "down" : "right"}.svg`).size(12).flex_none().text_color(t.dim) : div().w(12).flex_none())
         .child(image(iconFor(entry.name, entry.dir, open)).size(16).flex_none())
@@ -317,7 +323,10 @@ export default class Files extends View {
       .when(Boolean(replaceInBar), el => el.child(replaceInBar))
       .when(Boolean(confirm), el => el.child(confirm))
       .when(Boolean(this.note), el => el.child(div().px(12).py(4).text_size(sz("xs")).text_color(/^(Saved|Replaced|Created|Renamed|Deleted)/.test(this.note) ? t.ansi2 : this.note.endsWith("…") ? t.dim : t.ansi1).child(this.note)))
-      .child(file ? this.fileBody(t) : results || tree)
+      // An open file has the tree beside it, so another file is a double-click away.
+      .child(file ? h_flex().flex_1().min_h(0).w_full()
+        .child(v_flex().w(280).flex_none().h_full().min_h(0).border_r(1).border_color(t.border).child(tree))
+        .child(v_flex().flex_1().min_w(0).h_full().min_h(0).child(this.fileBody(t))) : results || tree)
       .child(div().flex_none().px(12).py(4).border_t(1).border_color(t.border).text_size(sz("xs")).text_color(t.dim).truncate()
         .child(file ? `ctrl+s save · ctrl+f find · ctrl+h replace · right-click: send code · esc back` : "double-click: open · right-click: @chat, new, rename, delete · drag: path to a terminal · / search"));
   }

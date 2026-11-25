@@ -89,6 +89,8 @@ export const actionsMethods = {
   fileOp(action, cx) {
     const m = this.menu;
     if (!m || !action || (m.path === "" && (action === "rename" || action === "delete"))) return;
+    // New file opens in place of the open one, a rename of it closes it: either would drop the edits.
+    if (this.dirty()) { this.note = "Save or close the open file first"; cx.notify(); return; }
     if (this.on) { this.note = "File actions work on this computer only"; cx.notify(); return; }
     if (action === "delete" && !m.confirm) { m.confirm = true; cx.notify(); return; }
     const name = this.nameInput.value().trim();
