@@ -251,6 +251,7 @@ export default class Files extends View {
       if (this.folded) foldPanel(this, "files", false); // folded: open to show it (first: the open's full window then wins)
       if (this.dirty()) this.note = "Save or close the open file first";
       else this.open(this.rel(asked.path), null, cx);
+      this.handle.focus(); // the keys (Esc) now go to Files, not the hidden Changes
     }
     const t = theme(), file = this.file, dirty = this.dirty(), full = this.isFull();
     if (this.folded) return foldedStrip("files", "»", "Show Files", t, () => foldPanel(this, "files", false))
